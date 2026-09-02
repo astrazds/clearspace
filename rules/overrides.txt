@@ -1,0 +1,5 @@
+! Clearspace local cosmetic overrides
+! Keep this list in the supported EasyList subset and require a verified, narrow site gap.
+apnews.com##[data-key^="ad-"]
+apnews.com##.SovrnAd
+apnews.com##.ad-placeholder

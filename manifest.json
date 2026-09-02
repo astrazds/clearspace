@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "Clearspace",
+  "short_name": "Clearspace",
+  "version": "0.1.0",
+  "description": "Collapse cosmetic ad gaps using local, independently refreshed public rule snapshots",
+  "permissions": [
+    "storage",
+    "alarms",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/wildcard/pro.txt",
+    "https://easylist-downloads.adblockplus.org/easylist.txt"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_title": "Clearspace site controls",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "name": "clearspace",
+  "version": "0.1.0",
+  "description": "Privacy-conscious cosmetic cleanup companion for Chromium",
+  "private": true,
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/astrazds/clearspace.git"
+  },
+  "homepage": "https://github.com/astrazds/clearspace#readme",
+  "bugs": {
+    "url": "https://github.com/astrazds/clearspace/issues"
+  },
+  "keywords": [
+    "ad-blocking",
+    "browser-extension",
+    "chromium",
+    "cosmetic-filtering",
+    "easylist",
+    "manifest-v3",
+    "privacy"
+  ],
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node scripts/smoke.mjs",
+    "package:release": "node scripts/package.mjs",
+    "check": "npm test && npm run package:release && npm run test:browser"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.60.0"
+  }
+}

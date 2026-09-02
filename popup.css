@@ -1,0 +1,106 @@
+:root {
+  color-scheme: light dark;
+  font: 13px/1.4 system-ui, sans-serif;
+}
+
+body {
+  width: 310px;
+  margin: 0;
+  color: CanvasText;
+  background: Canvas;
+}
+
+header,
+.toggle-row,
+section {
+  padding: 14px 16px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+}
+
+header div,
+.toggle-row span {
+  display: grid;
+}
+
+#hostname,
+small,
+dd,
+#refresh-result {
+  color: color-mix(in srgb, CanvasText 65%, transparent);
+}
+
+#hostname {
+  overflow: hidden;
+  max-width: 235px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.toggle-row input {
+  width: 36px;
+  height: 20px;
+}
+
+section {
+  border-top: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+dl,
+dl div {
+  margin: 0;
+}
+
+dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+dd {
+  overflow: hidden;
+  max-width: 185px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#refresh-result {
+  min-height: 1.4em;
+  margin: 8px 0;
+}
+
+button {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, CanvasText 7%, Canvas);
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: .6;
+}

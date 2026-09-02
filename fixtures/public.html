@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Clearspace public fixture</title>
+    <script>
+      localStorage.setItem('clearspace-load-count', String(Number(localStorage.getItem('clearspace-load-count') || 0) + 1));
+      setTimeout(() => {
+        const image = document.createElement('img');
+        image.id = 'dynamic-blocked-resource';
+        image.src = 'https://ads.fixture.test/dynamic.png';
+        document.querySelector('#dynamic-slot').append(image);
+      }, 50);
+    </script>
+  </head>
+  <body>
+    <main id="legitimate-content">Legitimate article content</main>
+    <div class="generic-ad" id="generic-ad">Generic ad gap</div>
+    <div class="site-ad" id="site-ad">Domain-specific ad gap</div>
+    <div class="exception-kept" id="exception-kept">Exception content</div>
+    <section id="arbitrary-parent"><img id="blocked-resource" src="https://ads.fixture.test/pixel.png" alt=""></section>
+    <aside class="ad-slot" id="explicit-slot"><img src="https://ads.fixture.test/ad.png" alt=""></aside>
+    <aside class="ad-slot" id="dynamic-slot"></aside>
+    <iframe id="fixture-frame" src="http://frame.public.test:__PORT__/frame.html"></iframe>
+  </body>
+</html>
