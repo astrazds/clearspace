@@ -38,7 +38,7 @@ async function load() {
   [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const [tabStatus, refreshStatus] = await Promise.all([
     currentTab?.id
-      ? chrome.tabs.sendMessage(currentTab.id, { type: MESSAGE.GET_TAB_STATUS, version: PROTOCOL_VERSION }).catch(() => null)
+      ? chrome.tabs.sendMessage(currentTab.id, { type: MESSAGE.GET_TAB_STATUS, version: PROTOCOL_VERSION }, { frameId: 0 }).catch(() => null)
       : null,
     request(MESSAGE.GET_REFRESH_STATUS),
   ]);

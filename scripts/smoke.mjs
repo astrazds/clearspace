@@ -120,6 +120,7 @@ try {
   context = await chromium.launchPersistentContext(userDataDir, {
     executablePath: chromiumExecutable(),
     headless: true,
+    deviceScaleFactor: process.env.CLEARSPACE_POPUP_SCREENSHOT ? 2 : 1,
     args: [
       `--disable-extensions-except=${extensionDir}`,
       `--load-extension=${extensionDir}`,
@@ -185,7 +186,7 @@ try {
   await popup.goto(`chrome-extension://${extensionId}/popup.html`);
   await popupTarget.bringToFront();
   await popup.reload();
-  await popup.locator('#hostname').filter({ hasText: 'public.test' }).waitFor();
+  await popup.locator('#hostname').filter({ hasText: /^public\.test$/ }).waitFor();
   if (!await popup.locator('#enabled').isChecked()) throw new Error('Popup did not show enabled host status');
   const workerStatusBeforeToggle = await send(harness, 'clearspace:v1/get-applicable-selectors', { hostname: 'public.test' });
   if (workerStatusBeforeToggle.enabled !== true) throw new Error('Worker was not enabled before the popup toggle');
@@ -194,7 +195,11 @@ try {
   if (process.env.CLEARSPACE_POPUP_SCREENSHOT) {
     const screenshotPath = path.resolve(repoRoot, process.env.CLEARSPACE_POPUP_SCREENSHOT);
     await mkdir(path.dirname(screenshotPath), { recursive: true });
-    await popup.locator('body').screenshot({ path: screenshotPath, animations: 'disabled' });
+    await popup.locator('body').screenshot({
+      path: screenshotPath,
+      animations: 'disabled',
+      scale: 'device',
+    });
   }
   const navigationTimestamp = await popupTarget.evaluate(() => performance.timeOrigin);
   const popupClosed = popup.waitForEvent('close');
