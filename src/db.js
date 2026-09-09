@@ -1,6 +1,18 @@
 const DATABASE_NAME = 'clearspace-rules';
 const DATABASE_VERSION = 1;
 
+/** @typedef {import('./source-validation.js').CompiledRules} CompiledRules */
+/** @typedef {import('./source-validation.js').SourceId} SourceId */
+/** @typedef {import('./source-validation.js').SourceMetadata} SourceMetadata */
+/** @typedef {'snapshots' | 'compiled' | 'metadata'} StoreName */
+/** @typedef {{ sourceId: SourceId, text: string }} SnapshotRecord */
+/** @typedef {{ sourceId: SourceId, data: CompiledRules }} CompiledRecord */
+/** @typedef {SnapshotRecord | CompiledRecord | SourceMetadata} DatabaseRecord */
+
+/**
+ * @param {IDBFactory} [indexedDBImpl]
+ * @returns {Promise<IDBDatabase>}
+ */
 export function openDatabase(indexedDBImpl = indexedDB) {
   return new Promise((resolve, reject) => {
     const request = indexedDBImpl.open(DATABASE_NAME, DATABASE_VERSION);
@@ -15,6 +27,11 @@ export function openDatabase(indexedDBImpl = indexedDB) {
   });
 }
 
+/**
+ * @template T
+ * @param {IDBRequest<T>} request
+ * @returns {Promise<T>}
+ */
 function requestResult(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -22,6 +39,10 @@ function requestResult(request) {
   });
 }
 
+/**
+ * @param {IDBTransaction} transaction
+ * @returns {Promise<void>}
+ */
 function transactionComplete(transaction) {
   return new Promise((resolve, reject) => {
     transaction.oncomplete = () => resolve();
@@ -30,6 +51,29 @@ function transactionComplete(transaction) {
   });
 }
 
+/**
+ * @overload
+ * @param {'metadata'} storeName
+ * @param {SourceId} sourceId
+ * @returns {Promise<SourceMetadata | undefined>}
+ */
+/**
+ * @overload
+ * @param {'compiled'} storeName
+ * @param {SourceId} sourceId
+ * @returns {Promise<CompiledRecord | undefined>}
+ */
+/**
+ * @overload
+ * @param {'snapshots'} storeName
+ * @param {SourceId} sourceId
+ * @returns {Promise<SnapshotRecord | undefined>}
+ */
+/**
+ * @param {StoreName} storeName
+ * @param {SourceId} sourceId
+ * @returns {Promise<DatabaseRecord | undefined>}
+ */
 export async function getRecord(storeName, sourceId) {
   const database = await openDatabase();
   try {
@@ -39,6 +83,25 @@ export async function getRecord(storeName, sourceId) {
   }
 }
 
+/**
+ * @overload
+ * @param {'metadata'} storeName
+ * @returns {Promise<SourceMetadata[]>}
+ */
+/**
+ * @overload
+ * @param {'compiled'} storeName
+ * @returns {Promise<CompiledRecord[]>}
+ */
+/**
+ * @overload
+ * @param {'snapshots'} storeName
+ * @returns {Promise<SnapshotRecord[]>}
+ */
+/**
+ * @param {StoreName} storeName
+ * @returns {Promise<DatabaseRecord[]>}
+ */
 export async function getAllRecords(storeName) {
   const database = await openDatabase();
   try {
@@ -48,6 +111,13 @@ export async function getAllRecords(storeName) {
   }
 }
 
+/**
+ * @param {SourceId} sourceId
+ * @param {string} text
+ * @param {CompiledRules} compiled
+ * @param {SourceMetadata} metadata
+ * @returns {Promise<void>}
+ */
 export async function replaceSourceAtomically(sourceId, text, compiled, metadata) {
   const database = await openDatabase();
   const transaction = database.transaction(['snapshots', 'compiled', 'metadata'], 'readwrite');
@@ -61,6 +131,10 @@ export async function replaceSourceAtomically(sourceId, text, compiled, metadata
   }
 }
 
+/**
+ * @param {SourceMetadata} metadata
+ * @returns {Promise<void>}
+ */
 export async function putMetadata(metadata) {
   const database = await openDatabase();
   const transaction = database.transaction('metadata', 'readwrite');

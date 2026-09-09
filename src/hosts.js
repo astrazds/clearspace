@@ -7,6 +7,13 @@ const PRIVATE_SUFFIXES = [
   'home.arpa',
 ];
 
+/** @typedef {{ disabledPublicHosts: string[], enabledPrivateHosts: string[] }} HostPreferences */
+/** @typedef {{ size: number, has(hostname: unknown): boolean, toJSON(): string[] }} SuffixMatcher */
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
 export function normalizeHostname(value) {
   const raw = String(value || '').trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
   if (!raw) return '';
@@ -17,6 +24,10 @@ export function normalizeHostname(value) {
   }
 }
 
+/**
+ * @param {unknown} value
+ * @returns {boolean}
+ */
 export function isValidDomain(value) {
   const host = normalizeHostname(value);
   if (!host || host.length > 253 || host.includes(':')) return false;
@@ -28,6 +39,10 @@ export function isValidDomain(value) {
   ));
 }
 
+/**
+ * @param {unknown} value
+ * @returns {string[]}
+ */
 export function hostnameSuffixes(value) {
   const host = normalizeHostname(value);
   if (!host || host.includes(':')) return host ? [host] : [];
@@ -35,6 +50,10 @@ export function hostnameSuffixes(value) {
   return labels.map((_, index) => labels.slice(index).join('.'));
 }
 
+/**
+ * @param {Iterable<unknown>} [domains]
+ * @returns {SuffixMatcher}
+ */
 export function createSuffixMatcher(domains = []) {
   const suffixes = new Set(Array.from(domains, normalizeHostname).filter(Boolean));
   return {
@@ -48,12 +67,17 @@ export function createSuffixMatcher(domains = []) {
   };
 }
 
+/**
+ * @param {string} host
+ * @returns {number[] | null}
+ */
 function parseIpv4(host) {
   if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return null;
   const parts = host.split('.').map(Number);
   return parts.every((part) => part >= 0 && part <= 255) ? parts : null;
 }
 
+/** @param {number[]} parts */
 function isPrivateIpv4(parts) {
   const [a, b] = parts;
   return a === 10
@@ -64,6 +88,7 @@ function isPrivateIpv4(parts) {
     || (a === 100 && b >= 64 && b <= 127);
 }
 
+/** @param {string} host */
 function isPrivateIpv6(host) {
   if (!host.includes(':')) return false;
   if (host === '::1') return true;
@@ -71,6 +96,10 @@ function isPrivateIpv6(host) {
   return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80;
 }
 
+/**
+ * @param {unknown} value
+ * @returns {boolean}
+ */
 export function isPrivateHostname(value) {
   const host = normalizeHostname(value);
   if (!host) return true;
@@ -80,6 +109,11 @@ export function isPrivateHostname(value) {
   return PRIVATE_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
 }
 
+/**
+ * @param {unknown} hostname
+ * @param {Partial<HostPreferences>} [preferences]
+ * @returns {boolean}
+ */
 export function hostEnabled(hostname, preferences = {}) {
   const host = normalizeHostname(hostname);
   const disabled = new Set(preferences.disabledPublicHosts || []);
@@ -87,6 +121,12 @@ export function hostEnabled(hostname, preferences = {}) {
   return isPrivateHostname(host) ? enabledPrivate.has(host) : !disabled.has(host);
 }
 
+/**
+ * @param {Partial<HostPreferences>} preferences
+ * @param {unknown} hostname
+ * @param {boolean} enabled
+ * @returns {HostPreferences}
+ */
 export function updateHostPreference(preferences, hostname, enabled) {
   const host = normalizeHostname(hostname);
   if (!host) throw new Error('A valid hostname is required');

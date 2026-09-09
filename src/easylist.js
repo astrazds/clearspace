@@ -11,15 +11,49 @@ const UNSUPPORTED_MARKERS = [
 
 const UNSUPPORTED_SELECTOR = /(?:^|[^\\])(?::?-abp-|:contains\(|:matches-css\(|:xpath\(|:remove\(|:style\(|\{\s*(?:remove|style)\s*:|\+js\()/i;
 
+/** @typedef {'hide' | 'exception'} CosmeticKind */
+/** @typedef {'elemhide' | 'generichide'} PageExceptionKind */
+/** @typedef {{ selector: string, excludes: string[] }} CosmeticRule */
+/** @typedef {Record<string, CosmeticRule[]>} CosmeticIndex */
+/** @typedef {Record<string, PageExceptionKind[]>} PageExceptionIndex */
+/**
+ * @typedef {Record<string, number> & {
+ *   cosmetic: number,
+ *   exceptions: number,
+ *   networkIgnored: number,
+ *   unsupported: number,
+ *   invalid: number,
+ *   comments: number,
+ * }} EasyListStats
+ */
+/**
+ * @typedef {{
+ *   genericHides: CosmeticRule[],
+ *   genericExceptions: CosmeticRule[],
+ *   domainHides: CosmeticIndex,
+ *   domainExceptions: CosmeticIndex,
+ *   pageExceptions: PageExceptionIndex,
+ *   version: string,
+ *   stats: EasyListStats,
+ * }} CompiledEasyList
+ */
+/** @typedef {{ includes: string[], excludes: string[], valid: boolean }} ParsedDomains */
+
+/** @param {unknown} selector */
 function hasUnsupportedSelector(selector) {
   return UNSUPPORTED_SELECTOR.test(String(selector || '').trim());
 }
 
+/**
+ * @param {unknown} selector
+ * @returns {boolean}
+ */
 export function isSafeCssSelector(selector) {
   const value = String(selector || '').trim();
   if (!value || value.length > 8192 || hasUnsupportedSelector(value)) return false;
   if (/[{}\u0000-\u001f]/.test(value)) return false;
 
+  /** @type {string[]} */
   const stack = [];
   let quote = '';
   let escaped = false;
@@ -47,8 +81,14 @@ export function isSafeCssSelector(selector) {
   return !quote && stack.length === 0 && !escaped;
 }
 
+/**
+ * @param {string} raw
+ * @returns {ParsedDomains}
+ */
 function parseDomains(raw) {
+  /** @type {string[]} */
   const includes = [];
+  /** @type {string[]} */
   const excludes = [];
   if (!raw) return { includes, excludes, valid: true };
 
@@ -62,6 +102,10 @@ function parseDomains(raw) {
   return { includes: [...new Set(includes)], excludes: [...new Set(excludes)], valid: true };
 }
 
+/**
+ * @param {string} line
+ * @returns {{ domain: string, kinds: PageExceptionKind[] } | null}
+ */
 function parsePageException(line) {
   const match = line.match(/^@@\|\|([^/^$*]+)\^\$([^\s]+)$/i);
   if (!match) return null;
@@ -72,10 +116,21 @@ function parsePageException(line) {
   return kinds.length ? { domain, kinds } : null;
 }
 
+/**
+ * @param {CosmeticIndex} target
+ * @param {string} key
+ * @param {CosmeticRule} rule
+ */
 function addIndexed(target, key, rule) {
   (target[key] ||= []).push(rule);
 }
 
+/**
+ * @param {CompiledEasyList} compiled
+ * @param {CosmeticKind} kind
+ * @param {ParsedDomains} domains
+ * @param {string} selector
+ */
 function addCosmeticRule(compiled, kind, domains, selector) {
   const rule = { selector, excludes: domains.excludes };
   const genericKey = kind === 'hide' ? 'genericHides' : 'genericExceptions';
@@ -87,7 +142,12 @@ function addCosmeticRule(compiled, kind, domains, selector) {
   }
 }
 
+/**
+ * @param {unknown} text
+ * @returns {CompiledEasyList}
+ */
 export function parseEasyList(text) {
+  /** @type {CompiledEasyList} */
   const compiled = {
     genericHides: [],
     genericExceptions: [],
@@ -156,13 +216,22 @@ export function parseEasyList(text) {
   return compiled;
 }
 
+/**
+ * @param {CosmeticIndex} target
+ * @param {CosmeticIndex} source
+ */
 function mergeIndex(target, source) {
-  for (const [domain, rules] of Object.entries(source || {})) {
+  for (const [domain, rules] of Object.entries(source)) {
     (target[domain] ||= []).push(...rules);
   }
 }
 
+/**
+ * @param {...(CompiledEasyList | undefined | null)} lists
+ * @returns {CompiledEasyList}
+ */
 export function mergeEasyLists(...lists) {
+  /** @type {CompiledEasyList} */
   const merged = {
     genericHides: [],
     genericExceptions: [],
@@ -170,27 +239,46 @@ export function mergeEasyLists(...lists) {
     domainExceptions: Object.create(null),
     pageExceptions: Object.create(null),
     version: lists.map((list) => list?.version).filter(Boolean).join(' + '),
-    stats: Object.create(null),
+    stats: {
+      cosmetic: 0,
+      exceptions: 0,
+      networkIgnored: 0,
+      unsupported: 0,
+      invalid: 0,
+      comments: 0,
+    },
   };
-  for (const list of lists.filter(Boolean)) {
+  Object.setPrototypeOf(merged.stats, null);
+  for (const list of lists) {
+    if (!list) continue;
     merged.genericHides.push(...list.genericHides);
     merged.genericExceptions.push(...list.genericExceptions);
     mergeIndex(merged.domainHides, list.domainHides);
     mergeIndex(merged.domainExceptions, list.domainExceptions);
-    for (const [domain, kinds] of Object.entries(list.pageExceptions || {})) {
+    for (const [domain, kinds] of Object.entries(list.pageExceptions)) {
       merged.pageExceptions[domain] = [...new Set([...(merged.pageExceptions[domain] || []), ...kinds])];
     }
-    for (const [name, count] of Object.entries(list.stats || {})) {
+    for (const [name, count] of Object.entries(list.stats)) {
       merged.stats[name] = (merged.stats[name] || 0) + count;
     }
   }
   return merged;
 }
 
+/**
+ * @param {CosmeticRule} rule
+ * @param {Set<string>} suffixSet
+ */
 function ruleApplies(rule, suffixSet) {
   return !(rule.excludes || []).some((domain) => suffixSet.has(domain));
 }
 
+/**
+ * @param {CosmeticIndex} index
+ * @param {string[]} suffixes
+ * @param {Set<string>} suffixSet
+ * @param {Set<string>} output
+ */
 function collectRules(index, suffixes, suffixSet, output) {
   for (const suffix of suffixes) {
     for (const rule of index[suffix] || []) {
@@ -199,6 +287,11 @@ function collectRules(index, suffixes, suffixSet, output) {
   }
 }
 
+/**
+ * @param {CompiledEasyList} compiled
+ * @param {unknown} hostname
+ * @returns {string[]}
+ */
 export function resolveSelectors(compiled, hostname) {
   const suffixes = hostnameSuffixes(hostname);
   const suffixSet = new Set(suffixes);

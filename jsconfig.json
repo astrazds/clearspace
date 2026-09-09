@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": [
+      "chrome"
+    ]
+  },
+  "include": [
+    "background.js",
+    "popup.js",
+    "src/**/*.js",
+    "tests/typecheck/**/*.js"
+  ]
+}

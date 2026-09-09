@@ -1,6 +1,10 @@
 import { createSuffixMatcher, isValidDomain, normalizeHostname } from './hosts.js';
 
+/**
+ * @param {unknown} text
+ */
 export function parseHagezi(text) {
+  /** @type {Set<string>} */
   const domains = new Set();
   let ignored = 0;
   let malformed = 0;
@@ -34,6 +38,7 @@ export function parseHagezi(text) {
   };
 }
 
+/** @param {unknown} text */
 export function compileHagezi(text) {
   const parsed = parseHagezi(text);
   return {
