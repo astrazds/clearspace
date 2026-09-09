@@ -1,36 +1,44 @@
 import { isRecord, makeRequest, MESSAGE } from './src/protocol.js';
 
 const hostname = document.querySelector('#hostname');
+const siteStatus = document.querySelector('#site-status');
 const enabled = document.querySelector('#enabled');
-const scopeNote = document.querySelector('#scope-note');
-const hagezi = document.querySelector('#hagezi-status');
-const easylist = document.querySelector('#easylist-status');
 const refreshResult = document.querySelector('#refresh-result');
 const refresh = document.querySelector('#refresh');
 if (!(hostname instanceof HTMLElement)
+  || !(siteStatus instanceof HTMLElement)
   || !(enabled instanceof HTMLInputElement)
-  || !(scopeNote instanceof HTMLElement)
-  || !(hagezi instanceof HTMLElement)
-  || !(easylist instanceof HTMLElement)
   || !(refreshResult instanceof HTMLElement)
   || !(refresh instanceof HTMLButtonElement)) {
   throw new Error('Clearspace popup markup is incomplete');
 }
-const elements = { hostname, enabled, scopeNote, hagezi, easylist, refreshResult, refresh };
+const elements = { hostname, siteStatus, enabled, refreshResult, refresh };
 
-/**
- * @typedef {{ kind: 'unavailable' }
- *   | { kind: 'available', version: string, fetchedAt: number | null, title: string, lastError: string | null }
- * } SourceView
+/** @typedef {{ kind: 'loading' }
+ *   | { kind: 'unavailable', message: string }
+ *   | {
+ *       kind: 'ready',
+ *       hostname: string,
+ *       enabled: boolean,
+ *       pending: boolean,
+ *       error: string | null,
+ *     }
+ * } PopupState
+ */
+/** @typedef {{ kind: 'idle' }
+ *   | { kind: 'pending' }
+ *   | { kind: 'success', message: string }
+ *   | { kind: 'error', message: string }
+ * } UpdateState
  */
 /** @typedef {{ hostname: string, enabled: boolean }} TabStatus */
-/** @typedef {{ hagezi: SourceView, easylist: SourceView, lastError: string | null }} RefreshStatusView */
-/** @typedef {{ kind: 'success' } | { kind: 'error', message: string }} ActionResult */
-/** @typedef {{ kind: 'success', failures: number } | { kind: 'error', message: string }} RefreshActionResult */
 
-/** @type {chrome.tabs.Tab | undefined} */
-let currentTab;
-let currentHostname = '';
+/** @type {PopupState} */
+let popupState = { kind: 'loading' };
+/** @type {UpdateState} */
+let updateState = { kind: 'idle' };
+/** @type {number | null} */
+let currentTabId = null;
 
 /**
  * @param {import('./src/protocol.js').RequestInput} request
@@ -48,172 +56,200 @@ function parseTabStatus(value) {
   if (!isRecord(value)
     || value.ok !== true
     || typeof value.hostname !== 'string'
+    || !value.hostname
     || typeof value.enabled !== 'boolean') return null;
   return { hostname: value.hostname, enabled: value.enabled };
 }
 
 /**
  * @param {unknown} value
- * @returns {SourceView}
+ * @param {boolean} expectedEnabled
+ * @returns {boolean}
  */
-function parseSource(value) {
-  if (!isRecord(value)) return { kind: 'unavailable' };
-  const lastResult = isRecord(value.lastResult) ? value.lastResult : null;
-  const lastError = lastResult?.ok === false && typeof lastResult.error === 'string'
-    ? lastResult.error
-    : null;
-  return {
-    kind: 'available',
-    version: typeof value.version === 'string' && value.version ? value.version : 'unknown',
-    fetchedAt: typeof value.fetchedAt === 'number' ? value.fetchedAt : null,
-    title: lastError || (typeof value.url === 'string' ? value.url : ''),
-    lastError,
-  };
+function preferenceWasSaved(value, expectedEnabled) {
+  return isRecord(value) && value.ok === true && value.enabled === expectedEnabled;
 }
 
 /**
  * @param {unknown} value
- * @returns {RefreshStatusView | null}
+ * @returns {number | null}
  */
-function parseRefreshStatus(value) {
-  if (!isRecord(value) || value.ok !== true) return null;
-  const sources = isRecord(value.sources) ? value.sources : {};
-  const hageziSource = parseSource(sources.hagezi);
-  const easylistSource = parseSource(sources.easylist);
-  let lastError = null;
-  for (const sourceValue of Object.values(sources)) {
-    const source = parseSource(sourceValue);
-    if (source.kind === 'available' && source.lastError !== null) {
-      lastError = source.lastError;
+function refreshFailureCount(value) {
+  if (!isRecord(value) || value.ok !== true || !isRecord(value.results)) return null;
+  const results = Object.values(value.results);
+  if (!results.length) return null;
+  let failures = 0;
+  for (const result of results) {
+    if (!isRecord(result) || typeof result.ok !== 'boolean') return null;
+    if (!result.ok) failures += 1;
+  }
+  return failures;
+}
+
+function renderPopup() {
+  switch (popupState.kind) {
+    case 'loading':
+    case 'unavailable':
+      elements.hostname.hidden = true;
+      elements.hostname.textContent = '';
+      elements.hostname.title = '';
+      elements.siteStatus.textContent = popupState.kind === 'loading'
+        ? 'Checking current page...'
+        : popupState.message;
+      elements.enabled.checked = false;
+      elements.enabled.disabled = true;
+      break;
+    case 'ready': {
+      const stateLabel = (popupState.enabled ? 'On' : 'Off') + ' for this site';
+      elements.hostname.hidden = false;
+      elements.hostname.textContent = popupState.hostname;
+      elements.hostname.title = popupState.hostname;
+      elements.siteStatus.textContent = popupState.pending
+        ? 'Saving...'
+        : popupState.error ? stateLabel + '. ' + popupState.error : stateLabel;
+      elements.enabled.checked = popupState.enabled;
+      elements.enabled.disabled = popupState.pending;
       break;
     }
   }
-  return {
-    hagezi: hageziSource,
-    easylist: easylistSource,
-    lastError,
-  };
 }
 
-/**
- * @param {unknown} value
- * @param {string} fallback
- * @returns {ActionResult}
- */
-function parseActionResult(value, fallback) {
-  if (isRecord(value) && value.ok === true) return { kind: 'success' };
-  return {
-    kind: 'error',
-    message: isRecord(value) && typeof value.error === 'string' ? value.error : fallback,
-  };
-}
-
-/**
- * @param {unknown} value
- * @returns {RefreshActionResult}
- */
-function parseRefreshAction(value) {
-  const action = parseActionResult(value, 'Refresh failed');
-  if (action.kind === 'error') return action;
-  const results = isRecord(value) && isRecord(value.results) ? Object.values(value.results) : [];
-  return {
-    kind: 'success',
-    failures: results.filter((result) => isRecord(result) && result.ok === false).length,
-  };
-}
-
-/** @param {number | null} timestamp */
-function age(timestamp) {
-  if (!timestamp) return 'unknown age';
-  const hours = Math.max(0, Math.floor((Date.now() - timestamp) / 3_600_000));
-  if (hours < 1) return 'just now';
-  if (hours < 48) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-/**
- * @param {HTMLElement} element
- * @param {SourceView} source
- */
-function renderSource(element, source) {
-  if (source.kind === 'unavailable') {
-    element.textContent = 'Unavailable';
-    return;
+function renderUpdate() {
+  elements.refresh.disabled = updateState.kind === 'pending';
+  switch (updateState.kind) {
+    case 'idle':
+      elements.refreshResult.hidden = true;
+      elements.refreshResult.textContent = '';
+      break;
+    case 'pending':
+      elements.refreshResult.hidden = false;
+      elements.refreshResult.textContent = 'Checking...';
+      break;
+    case 'success':
+    case 'error':
+      elements.refreshResult.hidden = false;
+      elements.refreshResult.textContent = updateState.message;
+      break;
   }
-  element.textContent = `${source.version} · ${age(source.fetchedAt)}`;
-  element.title = source.title;
+}
+
+/** @param {PopupState} state */
+function setPopupState(state) {
+  popupState = state;
+  renderPopup();
+}
+
+/** @param {UpdateState} state */
+function setUpdateState(state) {
+  updateState = state;
+  renderUpdate();
 }
 
 async function load() {
-  [currentTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const tabStatusPromise = currentTab?.id !== undefined
-    ? chrome.tabs.sendMessage(
-      currentTab.id,
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id === undefined) {
+    setPopupState({ kind: 'unavailable', message: 'Open a website to use Clearspace.' });
+    return;
+  }
+  currentTabId = tab.id;
+
+  let value;
+  try {
+    value = await chrome.tabs.sendMessage(
+      currentTabId,
       makeRequest({ type: MESSAGE.GET_TAB_STATUS }),
       { frameId: 0 },
-    ).catch(() => null)
-    : null;
-  const [tabStatusValue, refreshStatusValue] = await Promise.all([
-    tabStatusPromise,
-    sendRequest({ type: MESSAGE.GET_REFRESH_STATUS }),
-  ]);
-  const tabStatus = parseTabStatus(tabStatusValue);
-  const refreshStatus = parseRefreshStatus(refreshStatusValue);
-
-  if (tabStatus) {
-    currentHostname = tabStatus.hostname;
-    elements.hostname.textContent = currentHostname;
-    elements.enabled.checked = tabStatus.enabled;
-    elements.enabled.disabled = false;
-  } else {
-    elements.hostname.textContent = 'Unavailable on this page';
-    elements.scopeNote.textContent = 'Open an HTTP(S) page to configure it';
+    );
+  } catch {
+    setPopupState({ kind: 'unavailable', message: 'Open a website to use Clearspace.' });
+    return;
   }
-  if (refreshStatus) {
-    renderSource(elements.hagezi, refreshStatus.hagezi);
-    renderSource(elements.easylist, refreshStatus.easylist);
-    elements.refreshResult.textContent = refreshStatus.lastError
-      ? `Last refresh failed: ${refreshStatus.lastError}`
-      : 'Last refresh succeeded';
+  const status = parseTabStatus(value);
+  if (!status) {
+    setPopupState({ kind: 'unavailable', message: 'Open a website to use Clearspace.' });
+    return;
+  }
+  setPopupState({
+    kind: 'ready',
+    hostname: status.hostname,
+    enabled: status.enabled,
+    pending: false,
+    error: null,
+  });
+}
+
+async function saveSitePreference() {
+  const previous = popupState;
+  if (previous.kind !== 'ready' || previous.pending) return;
+  const requestedEnabled = elements.enabled.checked;
+  setPopupState({
+    kind: 'ready',
+    hostname: previous.hostname,
+    enabled: requestedEnabled,
+    pending: true,
+    error: null,
+  });
+
+  try {
+    const response = await sendRequest({
+      type: MESSAGE.SET_HOST_PREFERENCE,
+      hostname: previous.hostname,
+      enabled: requestedEnabled,
+    });
+    if (!preferenceWasSaved(response, requestedEnabled)) throw new Error('Preference was not saved');
+  } catch {
+    setPopupState({
+      kind: 'ready',
+      hostname: previous.hostname,
+      enabled: previous.enabled,
+      pending: false,
+      error: "Couldn't save this change. Try again.",
+    });
+    return;
+  }
+
+  try {
+    if (currentTabId === null) throw new Error('Target tab is unavailable');
+    await chrome.tabs.reload(currentTabId);
+  } catch {
+    setPopupState({
+      kind: 'ready',
+      hostname: previous.hostname,
+      enabled: requestedEnabled,
+      pending: false,
+      error: 'Reload this page to apply it.',
+    });
+    return;
+  }
+  window.close();
+}
+
+async function checkForUpdates() {
+  if (updateState.kind === 'pending') return;
+  setUpdateState({ kind: 'pending' });
+  try {
+    const failures = refreshFailureCount(await sendRequest({ type: MESSAGE.REFRESH_SOURCES }));
+    if (failures === null) {
+      setUpdateState({ kind: 'error', message: "Couldn't check for updates. Try again." });
+    } else if (failures) {
+      setUpdateState({ kind: 'error', message: 'Some updates failed. Try again.' });
+    } else {
+      setUpdateState({ kind: 'success', message: 'Updates checked.' });
+    }
+  } catch {
+    setUpdateState({ kind: 'error', message: "Couldn't check for updates. Try again." });
   }
 }
 
-elements.enabled.addEventListener('change', async () => {
-  elements.enabled.disabled = true;
-  const result = parseActionResult(await sendRequest({
-    type: MESSAGE.SET_HOST_PREFERENCE,
-    hostname: currentHostname,
-    enabled: elements.enabled.checked,
-  }), 'Could not update this site');
-  if (result.kind === 'error') {
-    elements.enabled.checked = !elements.enabled.checked;
-    elements.refreshResult.textContent = result.message;
-    elements.enabled.disabled = false;
-    return;
-  }
-  if (currentTab?.id !== undefined) await chrome.tabs.reload(currentTab.id);
-  window.close();
+elements.enabled.addEventListener('change', () => {
+  void saveSitePreference();
+});
+elements.refresh.addEventListener('click', () => {
+  void checkForUpdates();
 });
 
-elements.refresh.addEventListener('click', async () => {
-  elements.refresh.disabled = true;
-  elements.refreshResult.textContent = 'Refreshing both sources…';
-  const result = parseRefreshAction(await sendRequest({ type: MESSAGE.REFRESH_SOURCES }));
-  if (result.kind === 'error') elements.refreshResult.textContent = result.message;
-  else {
-    elements.refreshResult.textContent = result.failures
-      ? `${result.failures} source refresh failed; last-known-good rules retained`
-      : 'Both sources refreshed';
-  }
-  elements.refresh.disabled = false;
-  const status = parseRefreshStatus(await sendRequest({ type: MESSAGE.GET_REFRESH_STATUS }));
-  if (status) {
-    renderSource(elements.hagezi, status.hagezi);
-    renderSource(elements.easylist, status.easylist);
-  }
-});
-
-load().catch((error) => {
-  elements.hostname.textContent = 'Clearspace unavailable';
-  elements.refreshResult.textContent = error instanceof Error ? error.message : String(error);
+renderPopup();
+renderUpdate();
+load().catch(() => {
+  setPopupState({ kind: 'unavailable', message: 'Open a website to use Clearspace.' });
 });
