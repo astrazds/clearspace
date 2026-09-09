@@ -9,17 +9,21 @@ run = "npm ci"
 description = "Install the Chromium version used by the locked Playwright package"
 run = "node node_modules/playwright-core/cli.js install chromium"
 
+[tasks.typecheck]
+description = "Check JavaScript and browser API contracts"
+run = "npm run typecheck"
+
 [tasks.test]
 description = "Run unit tests"
 run = "npm test"
 
 [tasks.package]
 description = "Build the unpacked extension"
-run = "npm run package:release"
+run = ["npm run typecheck", "npm run package:release"]
 
 [tasks."test:browser"]
 description = "Build and exercise the extension in Chromium"
-run = "npm run test:browser"
+run = ["npm run typecheck", "npm run test:browser"]
 
 [tasks.check]
 description = "Check types, unit behavior, packaging, and browser behavior"

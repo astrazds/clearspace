@@ -11,16 +11,27 @@ const EXPLICIT_AD_SLOT_SELECTOR = [
   '.ad-slot', '.ad-container', '.advertisement', '[id^="ad-slot" i]', '[id^="ad_container" i]',
 ].join(',');
 const HIDDEN_ATTRIBUTE = 'data-clearspace-hidden';
+/** @type {Map<string, boolean>} */
 const hostCache = new Map();
 let enabled = false;
+/** @type {MutationObserver | undefined} */
 let observer;
+/** @type {Set<Element>} */
 let queuedElements = new Set();
 let flushScheduled = false;
 
+/**
+ * @param {import('../protocol.js').RequestInput} request
+ * @returns {Promise<unknown>}
+ */
 async function sendRequest(request) {
   return chrome.runtime.sendMessage(makeRequest(request));
 }
 
+/**
+ * @param {unknown} value
+ * @returns {value is { ok: true, enabled: boolean, selectors: string[] }}
+ */
 function isPagePolicyResponse(value) {
   return isRecord(value)
     && value.ok === true
@@ -29,11 +40,16 @@ function isPagePolicyResponse(value) {
     && value.selectors.every((selector) => typeof selector === 'string');
 }
 
+/**
+ * @param {unknown} value
+ * @returns {value is { ok: true, matches: Record<string, boolean> }}
+ */
 function isClassificationResponse(value) {
   if (!isRecord(value) || value.ok !== true || !isRecord(value.matches)) return false;
   return Object.values(value.matches).every((matches) => typeof matches === 'boolean');
 }
 
+/** @param {string[]} selectors */
 function addStyle(selectors) {
   const supported = selectors.filter((selector) => {
     try {
@@ -48,7 +64,12 @@ function addStyle(selectors) {
   (document.documentElement || document).append(style);
 }
 
+/**
+ * @param {Element} element
+ * @returns {string[]}
+ */
 function urlsForElement(element) {
+  /** @type {string[]} */
   const values = [];
   for (const attribute of ['src', 'poster', 'data']) {
     const value = element.getAttribute(attribute);
@@ -66,6 +87,10 @@ function urlsForElement(element) {
   return values;
 }
 
+/**
+ * @param {string} value
+ * @returns {string}
+ */
 function hostnameForUrl(value) {
   try {
     const parsed = new URL(value, document.baseURI);
@@ -75,14 +100,18 @@ function hostnameForUrl(value) {
   }
 }
 
+/** @param {Element} element */
 function hideResource(element) {
   element.setAttribute(HIDDEN_ATTRIBUTE, 'resource');
   const slot = element.closest(EXPLICIT_AD_SLOT_SELECTOR);
   if (slot) slot.setAttribute(HIDDEN_ATTRIBUTE, 'ad-slot');
 }
 
+/** @param {Element[]} elements */
 async function classify(elements) {
+  /** @type {Map<string, Set<Element>>} */
   const associations = new Map();
+  /** @type {Set<string>} */
   const unknown = new Set();
   for (const element of elements) {
     for (const value of urlsForElement(element)) {
@@ -109,6 +138,7 @@ async function classify(elements) {
   }
 }
 
+/** @param {Node | Document} root */
 function enqueue(root) {
   const queryRoot = root === document ? document : root instanceof Element ? root : null;
   if (!queryRoot) return;

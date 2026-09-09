@@ -18,14 +18,32 @@ if (!(hostname instanceof HTMLElement)
 }
 const elements = { hostname, enabled, scopeNote, hagezi, easylist, refreshResult, refresh };
 
+/**
+ * @typedef {{ kind: 'unavailable' }
+ *   | { kind: 'available', version: string, fetchedAt: number | null, title: string, lastError: string | null }
+ * } SourceView
+ */
+/** @typedef {{ hostname: string, enabled: boolean }} TabStatus */
+/** @typedef {{ hagezi: SourceView, easylist: SourceView, lastError: string | null }} RefreshStatusView */
+/** @typedef {{ kind: 'success' } | { kind: 'error', message: string }} ActionResult */
+/** @typedef {{ kind: 'success', failures: number } | { kind: 'error', message: string }} RefreshActionResult */
 
+/** @type {chrome.tabs.Tab | undefined} */
 let currentTab;
 let currentHostname = '';
 
+/**
+ * @param {import('./src/protocol.js').RequestInput} request
+ * @returns {Promise<unknown>}
+ */
 async function sendRequest(request) {
   return chrome.runtime.sendMessage(makeRequest(request));
 }
 
+/**
+ * @param {unknown} value
+ * @returns {TabStatus | null}
+ */
 function parseTabStatus(value) {
   if (!isRecord(value)
     || value.ok !== true
@@ -34,6 +52,10 @@ function parseTabStatus(value) {
   return { hostname: value.hostname, enabled: value.enabled };
 }
 
+/**
+ * @param {unknown} value
+ * @returns {SourceView}
+ */
 function parseSource(value) {
   if (!isRecord(value)) return { kind: 'unavailable' };
   const lastResult = isRecord(value.lastResult) ? value.lastResult : null;
@@ -49,6 +71,10 @@ function parseSource(value) {
   };
 }
 
+/**
+ * @param {unknown} value
+ * @returns {RefreshStatusView | null}
+ */
 function parseRefreshStatus(value) {
   if (!isRecord(value) || value.ok !== true) return null;
   const sources = isRecord(value.sources) ? value.sources : {};
@@ -69,6 +95,11 @@ function parseRefreshStatus(value) {
   };
 }
 
+/**
+ * @param {unknown} value
+ * @param {string} fallback
+ * @returns {ActionResult}
+ */
 function parseActionResult(value, fallback) {
   if (isRecord(value) && value.ok === true) return { kind: 'success' };
   return {
@@ -77,6 +108,10 @@ function parseActionResult(value, fallback) {
   };
 }
 
+/**
+ * @param {unknown} value
+ * @returns {RefreshActionResult}
+ */
 function parseRefreshAction(value) {
   const action = parseActionResult(value, 'Refresh failed');
   if (action.kind === 'error') return action;
@@ -87,6 +122,7 @@ function parseRefreshAction(value) {
   };
 }
 
+/** @param {number | null} timestamp */
 function age(timestamp) {
   if (!timestamp) return 'unknown age';
   const hours = Math.max(0, Math.floor((Date.now() - timestamp) / 3_600_000));
@@ -95,6 +131,10 @@ function age(timestamp) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+/**
+ * @param {HTMLElement} element
+ * @param {SourceView} source
+ */
 function renderSource(element, source) {
   if (source.kind === 'unavailable') {
     element.textContent = 'Unavailable';

@@ -9,8 +9,34 @@ export const MESSAGE = Object.freeze({
   GET_TAB_STATUS: 'clearspace:v1/get-tab-status',
 });
 
+/**
+ * @typedef {{ type: typeof MESSAGE.GET_APPLICABLE_SELECTORS, hostname: string }
+ *   | { type: typeof MESSAGE.CLASSIFY_HOSTNAMES, pageHostname: string, hostnames: string[] }
+ *   | { type: typeof MESSAGE.REFRESH_SOURCES }
+ *   | { type: typeof MESSAGE.GET_REFRESH_STATUS }
+ *   | { type: typeof MESSAGE.SET_HOST_PREFERENCE, hostname: string, enabled: boolean }
+ *   | { type: typeof MESSAGE.GET_TAB_STATUS }
+ * } RequestInput
+ */
 
+/** @typedef {RequestInput & { version: typeof PROTOCOL_VERSION }} ProtocolRequest */
+/**
+ * @typedef {Exclude<ProtocolRequest, { type: typeof MESSAGE.CLASSIFY_HOSTNAMES }>
+ *   | {
+ *       type: typeof MESSAGE.CLASSIFY_HOSTNAMES,
+ *       version: typeof PROTOCOL_VERSION,
+ *       pageHostname?: string,
+ *       hostnames?: string[],
+ *     }
+ * } IncomingProtocolRequest
+ */
 
+/**
+ * Add the protocol version without weakening the payload required by each request type.
+ *
+ * @param {RequestInput} request
+ * @returns {ProtocolRequest}
+ */
 export function makeRequest(request) {
   switch (request.type) {
     case MESSAGE.GET_APPLICABLE_SELECTORS:
@@ -36,10 +62,18 @@ export function makeRequest(request) {
   }
 }
 
+/**
+ * @param {unknown} value
+ * @returns {value is Record<string, unknown>}
+ */
 export function isRecord(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * @param {unknown} value
+ * @returns {value is IncomingProtocolRequest}
+ */
 export function isProtocolMessage(value) {
   if (!isRecord(value) || value.version !== PROTOCOL_VERSION) return false;
 

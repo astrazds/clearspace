@@ -1,8 +1,62 @@
 import { parseEasyList } from './easylist.js';
 import { parseHagezi } from './hagezi.js';
 
+/** @typedef {'hagezi' | 'easylist'} SourceId */
+/** @typedef {ReturnType<typeof parseHagezi>} HageziRules */
+/** @typedef {ReturnType<typeof parseEasyList>} EasyListRules */
+/** @typedef {HageziRules | EasyListRules} CompiledRules */
+/** @typedef {HageziRules['stats'] | EasyListRules['stats']} SourceStats */
+/**
+ * @typedef {{
+ *   id: SourceId,
+ *   name: string,
+ *   url: string,
+ *   seedPath?: string,
+ * }} SourceDefinition
+ */
+/** @typedef {SourceDefinition & { seedPath: string }} SeedSourceDefinition */
+/**
+ * @typedef {{ at: number, kind: 'bundled-seed' | 'updated' | 'not-modified' | 'unchanged-hash', ok: true }
+ *   | { at: number, kind: 'error', ok: false, error: string }
+ * } RefreshResult
+ */
+/**
+ * @typedef {{
+ *   sourceId: SourceId,
+ *   url: string,
+ *   hash?: string,
+ *   version?: string,
+ *   fetchedAt?: number,
+ *   checkedAt?: number,
+ *   etag?: string,
+ *   lastModified?: string,
+ *   sizeBytes?: number,
+ *   stats?: SourceStats,
+ *   bundledSeed?: boolean,
+ *   lastResult?: RefreshResult,
+ * }} SourceMetadata
+ */
+/** @typedef {{ minimumHageziDomains?: number, minimumEasyListCosmeticRules?: number }} SourceThresholds */
+/** @typedef {Record<string, string>} RequestHeaders */
+/**
+ * @typedef {{ kind: 'not-modified', checkedAt: number, requestHeaders: RequestHeaders }
+ *   | { kind: 'unchanged-hash', metadata: SourceMetadata, requestHeaders: RequestHeaders }
+ *   | { kind: 'replace', text: string, compiled: CompiledRules, metadata: SourceMetadata, requestHeaders: RequestHeaders }
+ * } SourceRefresh
+ */
+/**
+ * @typedef {{
+ *   source: SourceDefinition,
+ *   previous?: SourceMetadata,
+ *   fetchImpl?: typeof fetch,
+ *   now?: number,
+ *   thresholds?: SourceThresholds,
+ * }} RefreshSourceOptions
+ */
+
 export const MAX_SOURCE_BYTES = 32 * 1024 * 1024;
 
+/** @type {Readonly<Record<SourceId, SeedSourceDefinition>>} */
 export const SOURCE_CONFIG = Object.freeze({
   hagezi: {
     id: 'hagezi',
@@ -18,12 +72,21 @@ export const SOURCE_CONFIG = Object.freeze({
   },
 });
 
+/**
+ * @param {string} text
+ * @returns {Promise<string>}
+ */
 export async function sha256(text) {
   const bytes = new TextEncoder().encode(text);
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * @param {Response} response
+ * @param {number} [maxBytes]
+ * @returns {Promise<string>}
+ */
 export async function readResponseLimited(response, maxBytes = MAX_SOURCE_BYTES) {
   const declared = Number(response.headers.get('content-length') || 0);
   if (declared > maxBytes) throw new Error(`Source exceeds ${maxBytes} bytes`);
@@ -34,6 +97,7 @@ export async function readResponseLimited(response, maxBytes = MAX_SOURCE_BYTES)
   }
 
   const reader = response.body.getReader();
+  /** @type {Uint8Array[]} */
   const chunks = [];
   let total = 0;
   while (true) {
@@ -55,6 +119,12 @@ export async function readResponseLimited(response, maxBytes = MAX_SOURCE_BYTES)
   return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
 }
 
+/**
+ * @param {SourceId} sourceId
+ * @param {unknown} text
+ * @param {SourceThresholds} [thresholds]
+ * @returns {CompiledRules}
+ */
 export function validateAndCompile(sourceId, text, thresholds = {}) {
   if (!String(text || '').trim()) throw new Error(`${sourceId} source is empty`);
   if (sourceId === 'hagezi') {
@@ -74,7 +144,24 @@ export function validateAndCompile(sourceId, text, thresholds = {}) {
   throw new Error(`Unknown source: ${sourceId}`);
 }
 
+/**
+ * @param {SourceId} sourceId
+ * @param {SourceStats | undefined} stats
+ * @returns {number | undefined}
+ */
+function acceptedCount(sourceId, stats) {
+  if (!stats) return undefined;
+  if (sourceId === 'hagezi' && 'accepted' in stats) return stats.accepted;
+  if (sourceId === 'easylist' && 'cosmetic' in stats) return stats.cosmetic;
+  return undefined;
+}
+
+/**
+ * @param {RefreshSourceOptions} options
+ * @returns {Promise<SourceRefresh>}
+ */
 export async function refreshSource({ source, previous, fetchImpl = fetch, now = Date.now(), thresholds }) {
+  /** @type {RequestHeaders} */
   const headers = {};
   if (previous?.etag) headers['If-None-Match'] = previous.etag;
   if (previous?.lastModified) headers['If-Modified-Since'] = previous.lastModified;
@@ -88,12 +175,9 @@ export async function refreshSource({ source, previous, fetchImpl = fetch, now =
 
   const text = await readResponseLimited(response);
   const compiled = validateAndCompile(source.id, text, thresholds);
-  const previousAccepted = source.id === 'hagezi'
-    ? previous?.stats?.accepted
-    : previous?.stats?.cosmetic;
-  const nextAccepted = source.id === 'hagezi'
-    ? compiled.stats.accepted
-    : compiled.stats.cosmetic;
+  const previousAccepted = acceptedCount(source.id, previous?.stats);
+  const nextAccepted = acceptedCount(source.id, compiled.stats);
+  if (nextAccepted === undefined) throw new Error(`${source.name} compiled to the wrong rule format`);
   if (previousAccepted && nextAccepted < previousAccepted * 0.8) {
     throw new Error(`${source.name} update is unexpectedly truncated (${nextAccepted} rules; previously ${previousAccepted})`);
   }

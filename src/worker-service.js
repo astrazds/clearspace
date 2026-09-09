@@ -9,9 +9,29 @@ const PREFERENCES_KEY = 'hostPreferences';
 const ONE_DAY_MINUTES = 24 * 60;
 const ONE_HOUR_MINUTES = 60;
 
+/** @typedef {import('./hosts.js').HostPreferences} HostPreferences */
+/** @typedef {import('./source-validation.js').RefreshResult} RefreshResult */
+/** @typedef {import('./source-validation.js').SeedSourceDefinition} SeedSourceDefinition */
+/** @typedef {import('./source-validation.js').SourceId} SourceId */
+/** @typedef {import('./source-validation.js').SourceMetadata} SourceMetadata */
+/** @typedef {{ scheduleRetry: boolean }} RefreshOptions */
+/**
+ * @typedef {{
+ *   get(name: string): Promise<chrome.alarms.Alarm | undefined>,
+ *   create(name: string, alarmInfo: chrome.alarms.AlarmCreateInfo): Promise<void>,
+ *   clear(name: string): Promise<boolean>,
+ * }} AlarmStore
+ */
 
+/** @type {Readonly<HostPreferences>} */
 const DEFAULT_PREFERENCES = Object.freeze({ disabledPublicHosts: [], enabledPrivateHosts: [] });
 
+/**
+ * Preserve an existing daily deadline. Chrome creates the periodic alarm only once.
+ *
+ * @param {Pick<AlarmStore, 'get' | 'create'>} [alarms]
+ * @returns {Promise<void>}
+ */
 export async function ensureDailyRefreshAlarm(alarms = chrome.alarms) {
   if (await alarms.get(DAILY_ALARM)) return;
   await alarms.create(DAILY_ALARM, {
@@ -20,12 +40,23 @@ export async function ensureDailyRefreshAlarm(alarms = chrome.alarms) {
   });
 }
 
+/**
+ * Own the worker's cached rules, persistence operations, refresh policy, preferences, and alarms.
+ *
+ * @param {AlarmStore} [alarms]
+ */
 export function createWorkerService(alarms = chrome.alarms) {
+  /** @type {Promise<void> | undefined} */
   let initializationPromise;
+  /** @type {ReturnType<typeof createSuffixMatcher> | undefined} */
   let hageziMatcher;
+  /** @type {ReturnType<typeof parseEasyList> | undefined} */
   let easyListRules;
+  /** @type {ReturnType<typeof parseEasyList> | undefined} */
   let overrideRules;
+  /** @type {ReturnType<typeof parseEasyList> | undefined} */
   let cosmeticRules;
+  /** @type {Promise<void>} */
   let preferenceWrites = Promise.resolve();
 
   function rebuildCosmeticRules() {
@@ -33,6 +64,7 @@ export function createWorkerService(alarms = chrome.alarms) {
     cosmeticRules = mergeEasyLists(easyListRules, overrideRules);
   }
 
+  /** @returns {Promise<HostPreferences>} */
   async function getPreferences() {
     const stored = await chrome.storage.local.get(PREFERENCES_KEY);
     return { ...DEFAULT_PREFERENCES, ...(stored[PREFERENCES_KEY] || {}) };
@@ -46,6 +78,10 @@ export function createWorkerService(alarms = chrome.alarms) {
     return overrideRules;
   }
 
+  /**
+   * @param {SeedSourceDefinition} source
+   * @returns {Promise<void>}
+   */
   async function seedSource(source) {
     if (await getRecord('metadata', source.id)) return;
     const response = await fetch(chrome.runtime.getURL(source.seedPath));
@@ -83,6 +119,7 @@ export function createWorkerService(alarms = chrome.alarms) {
     rebuildCosmeticRules();
   }
 
+  /** @returns {Promise<void>} */
   async function initialize() {
     if (!initializationPromise) {
       initializationPromise = (async () => {
@@ -97,9 +134,16 @@ export function createWorkerService(alarms = chrome.alarms) {
     return initializationPromise;
   }
 
+  /**
+   * @param {SeedSourceDefinition} source
+   * @param {unknown} error
+   * @param {boolean} scheduleRetry
+   * @returns {Promise<RefreshResult>}
+   */
   async function updateRefreshFailure(source, error, scheduleRetry) {
     const previous = await getRecord('metadata', source.id);
     const now = Date.now();
+    /** @type {SourceMetadata & { lastResult: RefreshResult }} */
     const metadata = {
       ...(previous || { sourceId: source.id, url: source.url }),
       checkedAt: now,
@@ -117,10 +161,16 @@ export function createWorkerService(alarms = chrome.alarms) {
     return metadata.lastResult;
   }
 
+  /**
+   * @param {SeedSourceDefinition} source
+   * @param {RefreshOptions} options
+   * @returns {Promise<RefreshResult>}
+   */
   async function refreshOne(source, { scheduleRetry }) {
     const previous = await getRecord('metadata', source.id);
     try {
       const result = await refreshSource({ source, previous });
+      /** @type {SourceMetadata & { lastResult: RefreshResult }} */
       let metadata;
       if (result.kind === 'replace') {
         metadata = {
@@ -154,6 +204,10 @@ export function createWorkerService(alarms = chrome.alarms) {
     }
   }
 
+  /**
+   * @param {RefreshOptions} options
+   * @returns {Promise<Record<SourceId, RefreshResult>>}
+   */
   async function refreshAll(options) {
     await initialize();
     const [hagezi, easylist] = await Promise.all([
@@ -166,11 +220,15 @@ export function createWorkerService(alarms = chrome.alarms) {
   async function getRefreshStatus() {
     await initialize();
     const [metadata, preferences] = await Promise.all([getAllRecords('metadata'), getPreferences()]);
+    /** @type {Partial<Record<SourceId, SourceMetadata>>} */
     const sources = {};
     for (const item of metadata) sources[item.sourceId] = item;
     return { sources, preferences };
   }
 
+  /**
+   * @param {string} hostname
+   */
   async function getPagePolicy(hostname) {
     await initialize();
     const host = normalizeHostname(hostname);
@@ -181,6 +239,10 @@ export function createWorkerService(alarms = chrome.alarms) {
     return { enabled, hostname: host, selectors: resolveSelectors(cosmeticRules, host) };
   }
 
+  /**
+   * @param {string} pageHostname
+   * @param {string[]} hostnames
+   */
   async function classifyResources(pageHostname, hostnames) {
     await initialize();
     const pageHost = normalizeHostname(pageHostname);
@@ -194,6 +256,10 @@ export function createWorkerService(alarms = chrome.alarms) {
     return { matches };
   }
 
+  /**
+   * @param {string} hostname
+   * @param {boolean} enabled
+   */
   async function setHostEnabled(hostname, enabled) {
     const update = preferenceWrites.then(async () => {
       const preferences = updateHostPreference(await getPreferences(), hostname, enabled);
@@ -204,6 +270,10 @@ export function createWorkerService(alarms = chrome.alarms) {
     return update;
   }
 
+  /**
+   * @param {string} name
+   * @returns {Promise<void>}
+   */
   async function handleAlarm(name) {
     if (name === DAILY_ALARM) {
       await refreshAll({ scheduleRetry: true });

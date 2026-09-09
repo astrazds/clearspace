@@ -3,10 +3,18 @@ import { createWorkerService } from './src/worker-service.js';
 
 const service = createWorkerService();
 
+/**
+ * @param {chrome.runtime.MessageSender} sender
+ * @returns {string}
+ */
 function senderHostname(sender) {
   return new URL(sender.url || sender.tab?.url || '').hostname;
 }
 
+/**
+ * @param {import('./src/protocol.js').IncomingProtocolRequest} request
+ * @param {chrome.runtime.MessageSender} sender
+ */
 async function dispatch(request, sender) {
   switch (request.type) {
     case MESSAGE.GET_APPLICABLE_SELECTORS:
