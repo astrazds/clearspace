@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { MESSAGE, PROTOCOL_VERSION } from '../src/protocol.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(await readFile(path.join(repoRoot, 'manifest.json'), 'utf8'));
@@ -22,7 +23,7 @@ function chromiumExecutable() {
   if (systemExecutable) return systemExecutable;
   const playwrightExecutable = chromium.executablePath();
   if (existsSync(playwrightExecutable)) return playwrightExecutable;
-  throw new Error('Chromium executable not found; run `npx playwright install chromium`');
+  throw new Error('Chromium executable not found; run `mise run install:browser`');
 }
 
 function testHagezi() {
@@ -79,22 +80,14 @@ async function display(page, selector) {
 }
 
 async function send(extensionPage, type, payload = {}) {
-  return extensionPage.evaluate(async ({ type: messageType, payload: messagePayload }) => chrome.runtime.sendMessage({
-    type: messageType,
-    version: 1,
-    ...messagePayload,
-  }), { type, payload });
+  return extensionPage.evaluate((message) => chrome.runtime.sendMessage(message), { type, version: PROTOCOL_VERSION, ...payload });
 }
 
 async function waitForHostEnabled(extensionPage, hostname, enabled) {
-  await extensionPage.waitForFunction(async ({ expectedHostname, expectedEnabled }) => {
-    const response = await chrome.runtime.sendMessage({
-      type: 'clearspace:v1/get-applicable-selectors',
-      version: 1,
-      hostname: expectedHostname,
-    });
+  await extensionPage.waitForFunction(async ({ request, expectedEnabled }) => {
+    const response = await chrome.runtime.sendMessage(request);
     return response?.ok && response.enabled === expectedEnabled;
-  }, { expectedHostname: hostname, expectedEnabled: enabled });
+  }, { request: { type: MESSAGE.GET_APPLICABLE_SELECTORS, version: PROTOCOL_VERSION, hostname }, expectedEnabled: enabled });
 }
 
 async function stopServiceWorker(context, page, scriptUrl) {
@@ -188,7 +181,7 @@ try {
   await popup.reload();
   await popup.locator('#hostname').filter({ hasText: /^public\.test$/ }).waitFor();
   if (!await popup.locator('#enabled').isChecked()) throw new Error('Popup did not show enabled host status');
-  const workerStatusBeforeToggle = await send(harness, 'clearspace:v1/get-applicable-selectors', { hostname: 'public.test' });
+  const workerStatusBeforeToggle = await send(harness, MESSAGE.GET_APPLICABLE_SELECTORS, { hostname: 'public.test' });
   if (workerStatusBeforeToggle.enabled !== true) throw new Error('Worker was not enabled before the popup toggle');
   await popup.locator('#refresh').click();
   await popup.locator('#refresh-result').filter({ hasText: 'Both sources refreshed' }).waitFor();
@@ -214,20 +207,13 @@ try {
   });
   await popupTarget.waitForFunction((before) => performance.timeOrigin !== before, navigationTimestamp);
   await popupClosed;
-  const confirmedDisabled = await send(harness, 'clearspace:v1/set-host-preference', {
-    hostname: 'public.test',
-    enabled: false,
-  });
-  if (!confirmedDisabled.ok || confirmedDisabled.enabled !== false) {
-    throw new Error('Popup preference could not be confirmed before the visibility check');
-  }
   await popupTarget.close();
   const disabledPage = await context.newPage();
   await disabledPage.goto(`http://public.test:${port}/`, { waitUntil: 'domcontentloaded' });
   await disabledPage.locator('#generic-ad').waitFor({ state: 'visible' });
   if (await display(disabledPage, '#generic-ad') === 'none') throw new Error('Popup preference did not disable the hostname on a new navigation');
   await disabledPage.close();
-  await send(harness, 'clearspace:v1/set-host-preference', { hostname: 'public.test', enabled: true });
+  await send(harness, MESSAGE.SET_HOST_PREFERENCE, { hostname: 'public.test', enabled: true });
   await harness.waitForFunction(async () => {
     const stored = await chrome.storage.local.get('hostPreferences');
     return !stored.hostPreferences?.disabledPublicHosts?.includes('public.test');
@@ -235,24 +221,39 @@ try {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('style[data-clearspace="cosmetic"]').waitFor({ state: 'attached' });
 
+  const dailyBefore = await harness.evaluate(() => chrome.alarms.get('clearspace-refresh-daily'));
   const workerUrl = worker.url();
   await stopServiceWorker(context, page, workerUrl);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('style[data-clearspace="cosmetic"]').waitFor({ state: 'attached' });
   worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
   if (await display(page, '#generic-ad') !== 'none') throw new Error('Rules did not survive a service-worker restart');
+  const dailyAfter = await harness.evaluate(() => chrome.alarms.get('clearspace-refresh-daily'));
+  if (!dailyBefore || dailyAfter?.scheduledTime !== dailyBefore.scheduledTime) {
+    throw new Error('Service-worker restart postponed the scheduled daily refresh');
+  }
 
-  const refresh = await send(harness, 'clearspace:v1/refresh-sources');
+  const refresh = await send(harness, MESSAGE.REFRESH_SOURCES);
   if (!refresh.ok || Object.values(refresh.results).some((result) => !result.ok)) throw new Error('Manual refresh did not update both sources');
-  const beforeFailure = await send(harness, 'clearspace:v1/get-refresh-status');
+  const beforeFailure = await send(harness, MESSAGE.GET_REFRESH_STATUS);
   hageziMode = 'fail';
   easyListVersion = 'smoke-independent';
-  const partialRefresh = await send(harness, 'clearspace:v1/refresh-sources');
+  const partialRefresh = await send(harness, MESSAGE.REFRESH_SOURCES);
   if (partialRefresh.results.hagezi.ok || !partialRefresh.results.easylist.ok) throw new Error('Independent source failure handling was not preserved');
-  const afterFailure = await send(harness, 'clearspace:v1/get-refresh-status');
+  const afterFailure = await send(harness, MESSAGE.GET_REFRESH_STATUS);
   if (afterFailure.sources.hagezi.hash !== beforeFailure.sources.hagezi.hash) throw new Error('Failed source replaced its last-known-good snapshot');
   if (afterFailure.sources.easylist.version !== 'smoke-independent') throw new Error('Healthy source did not update independently');
   hageziMode = 'success';
+
+  const preferenceResults = await Promise.all([
+    send(harness, MESSAGE.SET_HOST_PREFERENCE, { hostname: 'first.public.test', enabled: false }),
+    send(harness, MESSAGE.SET_HOST_PREFERENCE, { hostname: 'second.public.test', enabled: false }),
+  ]);
+  if (preferenceResults.some((result) => !result.ok)) throw new Error('Concurrent site toggle failed');
+  const concurrentStatus = await send(harness, MESSAGE.GET_REFRESH_STATUS);
+  if (!['first.public.test', 'second.public.test'].every((host) => concurrentStatus.preferences.disabledPublicHosts.includes(host))) {
+    throw new Error('Concurrent site toggles lost a saved hostname preference');
+  }
 
   console.log(JSON.stringify({
     ok: true,
@@ -265,7 +266,9 @@ try {
       'private-host exclusion',
       'all-frame behavior',
       'exact-host toggle and reload',
+      'concurrent site toggles retain both preferences',
       'service-worker restart persistence',
+      'daily refresh deadline survives worker restart',
       'offline bundled-seed startup',
       'manual refresh',
       'independent source failure and last-known-good retention',

@@ -12,6 +12,7 @@ const ONE_HOUR_MINUTES = 60;
 const DEFAULT_PREFERENCES = Object.freeze({ disabledPublicHosts: [], enabledPrivateHosts: [] });
 
 let initializationPromise;
+let preferenceWrites = Promise.resolve();
 let hageziMatcher;
 let easyListRules;
 let overrideRules;
@@ -73,7 +74,9 @@ async function initialize() {
     initializationPromise = (async () => {
       await Promise.all(Object.values(SOURCE_CONFIG).map(seedSource));
       await hydrateCaches();
-      chrome.alarms.create(DAILY_ALARM, { delayInMinutes: ONE_DAY_MINUTES, periodInMinutes: ONE_DAY_MINUTES });
+      if (!await chrome.alarms.get(DAILY_ALARM)) {
+        await chrome.alarms.create(DAILY_ALARM, { delayInMinutes: ONE_DAY_MINUTES, periodInMinutes: ONE_DAY_MINUTES });
+      }
     })().catch((error) => {
       initializationPromise = undefined;
       throw error;
@@ -181,9 +184,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === MESSAGE.REFRESH_SOURCES) return { results: await refreshAll({ scheduleRetry: true }) };
     if (message.type === MESSAGE.GET_REFRESH_STATUS) return getStatus();
     if (message.type === MESSAGE.SET_HOST_PREFERENCE) {
-      const preferences = updateHostPreference(await getPreferences(), message.hostname, Boolean(message.enabled));
-      await chrome.storage.local.set({ [PREFERENCES_KEY]: preferences });
-      return { enabled: hostEnabled(message.hostname, preferences), preferences };
+      const update = preferenceWrites.then(async () => {
+        const preferences = updateHostPreference(await getPreferences(), message.hostname, Boolean(message.enabled));
+        await chrome.storage.local.set({ [PREFERENCES_KEY]: preferences });
+        return { enabled: hostEnabled(message.hostname, preferences), preferences };
+      });
+      preferenceWrites = update.then(() => {}, () => {});
+      return update;
     }
     throw new Error(`Unknown Clearspace message: ${message.type}`);
   };
