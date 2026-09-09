@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { MESSAGE, PROTOCOL_VERSION } from '../src/protocol.js';
+import { MESSAGE, makeRequest } from '../src/protocol.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(await readFile(path.join(repoRoot, 'manifest.json'), 'utf8'));
@@ -80,14 +80,14 @@ async function display(page, selector) {
 }
 
 async function send(extensionPage, type, payload = {}) {
-  return extensionPage.evaluate((message) => chrome.runtime.sendMessage(message), { type, version: PROTOCOL_VERSION, ...payload });
+  return extensionPage.evaluate((message) => chrome.runtime.sendMessage(message), makeRequest({ type, ...payload }));
 }
 
 async function waitForHostEnabled(extensionPage, hostname, enabled) {
   await extensionPage.waitForFunction(async ({ request, expectedEnabled }) => {
     const response = await chrome.runtime.sendMessage(request);
     return response?.ok && response.enabled === expectedEnabled;
-  }, { request: { type: MESSAGE.GET_APPLICABLE_SELECTORS, version: PROTOCOL_VERSION, hostname }, expectedEnabled: enabled });
+  }, { request: makeRequest({ type: MESSAGE.GET_APPLICABLE_SELECTORS, hostname }), expectedEnabled: enabled });
 }
 
 async function stopServiceWorker(context, page, scriptUrl) {

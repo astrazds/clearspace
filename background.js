@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, MESSAGE } from './src/protocol.js';
+import { isProtocolMessage, MESSAGE } from './src/protocol.js';
 import { createWorkerService } from './src/worker-service.js';
 
 const service = createWorkerService();
@@ -40,7 +40,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const respond = async () => {
-    if (!message || message.version !== PROTOCOL_VERSION) throw new Error('Unsupported Clearspace message version');
+    if (!isProtocolMessage(message)) throw new Error('Unsupported Clearspace message version or payload');
     return dispatch(message, sender);
   };
 

@@ -19,7 +19,7 @@ run = "npm run package:release"
 
 [tasks."test:browser"]
 description = "Build and exercise the extension in Chromium"
-run = ["npm run package:release", "npm run test:browser"]
+run = "npm run test:browser"
 
 [tasks.check]
 description = "Check types, unit behavior, packaging, and browser behavior"
