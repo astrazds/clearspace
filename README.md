@@ -31,16 +31,17 @@ Pro, while keeping page classification and preferences inside the extension.
 
 ## Install
 
-Clearspace is currently distributed as an unpacked extension. Chromium 151 is
+Clearspace is currently distributed as an unpacked extension. Chromium 152 is
 the browser version presently tested; other Chromium releases with Manifest V3
 support may also work.
 
-1. Install [Node.js](https://nodejs.org/) 20 or newer.
+1. Install [mise](https://mise.jdx.dev/) and run `mise install` to select the
+   project's pinned Node.js version.
 2. Build the unpacked directory:
 
    ```sh
-   npm ci
-   npm run package:release
+   mise run install
+   mise run package
    ```
 
 3. Open `chrome://extensions`, enable **Developer mode**, and choose
@@ -118,26 +119,35 @@ attribution and licenses.
 
 | Path | Purpose |
 | --- | --- |
-| `background.js`, `content.js` | Service worker and page-side behavior |
+| `background.js`, `src/worker-service.js` | Chrome event adapter and worker state |
+| `src/content/entry.js` | Page-side behavior, bundled as classic `content.js` |
 | `popup.*` | Exact-host controls and rule status UI |
-| `src/` | Parsing, validation, persistence, protocol, and host logic |
+| `src/` | Checked JavaScript for parsing, validation, persistence, protocol, and host logic |
 | `rules/` | Bundled offline snapshots and local cosmetic overrides |
 | `tests/`, `fixtures/` | Unit and browser acceptance coverage |
 | `scripts/` | Unpacked packaging and Playwright smoke test |
+| `mise.toml` | Pinned tool version and common development tasks |
+
+Read [ARCHITECTURE.md](ARCHITECTURE.md) for ownership, data flow, compatibility
+contracts, and the file and test to change for each subsystem.
 
 ## Development
 
 ```sh
-npm ci
-npm test
-npm run package:release
-npm run test:browser
-npm run check
+mise install
+mise run install
+mise run typecheck
+mise run test
+mise run package
+mise run test:browser
+mise run check
 ```
 
-`npm run check` runs the unit tests, rebuilds the unpacked extension, and runs
-the complete browser suite. The browser test uses a system Chromium when
-available or Playwright's installed Chromium (`npx playwright install chromium`).
+`mise run check` checks runtime JavaScript contracts, runs unit tests, rebuilds
+the unpacked extension, and runs the complete browser suite. The browser test
+uses a system Chromium when available or Playwright's installed Chromium
+(`mise run install:browser`). `mise run test:browser` also
+rebuilds before testing. Edit source files instead of generated files in `dist/`.
 
 Contributions are welcome; read [CONTRIBUTING.md](CONTRIBUTING.md) before opening
 a pull request. Clearspace code is licensed under

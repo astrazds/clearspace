@@ -8,6 +8,7 @@ const manifest = JSON.parse(await readFile(path.join(repoRoot, 'manifest.json'),
 const releaseName = `clearspace-${manifest.version}`;
 const releaseDir = path.join(repoRoot, 'dist', 'unpacked', releaseName);
 const files = [
+  'ARCHITECTURE.md',
   'background.js',
   'CONTRIBUTING.md',
   'LICENSE',

@@ -15,10 +15,15 @@ to review.
 4. Run the complete check:
 
    ```sh
-   npm ci
-   npx playwright install chromium
-   npm run check
+   mise install
+   mise run install
+   mise run install:browser
+   mise run check
    ```
+
+Read [ARCHITECTURE.md](ARCHITECTURE.md) to locate the owner and behavioral test
+for your change. Runtime JavaScript contracts are checked with TypeScript.
+Browser verification runs the packaged extension in an isolated profile.
 
 ## Pull requests
 
