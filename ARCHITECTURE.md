@@ -51,8 +51,11 @@ enabled, the script injects CSS, classifies resource hostnames, and observes DOM
 changes. An identified resource can hide itself and an explicitly marked ad
 slot. It cannot collapse an arbitrary ancestor.
 
-The popup reads status from frame zero. It stores an exact-host preference,
-reloads the tab, and closes. Source refreshes and preference changes take effect
+The popup reads site status from frame zero without requesting source metadata.
+It shows the site switch and keeps manual updates in a collapsed disclosure.
+It stores an exact-host preference, reloads the tab, and closes. A failed save
+restores the previous switch state. If the save succeeds but reload fails, the
+popup retains the saved state and asks the user to reload. Source refreshes and preference changes take effect
 in documents on navigation. There is no live reconfiguration protocol.
 The worker serializes preference writes because each update reads and replaces
 the same stored record. Concurrent toggles must retain both hostname changes.
