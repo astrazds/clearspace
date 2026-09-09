@@ -90,6 +90,51 @@ async function waitForHostEnabled(extensionPage, hostname, enabled) {
   }, { request: makeRequest({ type: MESSAGE.GET_APPLICABLE_SELECTORS, hostname }), expectedEnabled: enabled });
 }
 
+async function waitForStoredPublicHostEnabled(extensionPage, hostname, enabled) {
+  await extensionPage.waitForFunction(async ({ expectedHostname, expectedEnabled }) => {
+    const stored = await chrome.storage.local.get('hostPreferences');
+    const disabled = stored.hostPreferences?.disabledPublicHosts?.includes(expectedHostname) ?? false;
+    return disabled === !expectedEnabled;
+  }, { expectedHostname: hostname, expectedEnabled: enabled });
+}
+
+async function openPopup(context, extensionId, target, fault = null) {
+  const popup = await context.newPage();
+  if (fault) {
+    await popup.addInitScript(({ injectedFault, setPreferenceType, refreshType }) => {
+      if (injectedFault === 'save' || injectedFault === 'refresh') {
+        const sendMessage = chrome.runtime.sendMessage.bind(chrome.runtime);
+        let rejectNextRefresh = injectedFault === 'refresh';
+        chrome.runtime.sendMessage = (message, ...args) => {
+          if (injectedFault === 'save' && message?.type === setPreferenceType) {
+            return Promise.reject(new Error('Fixture preference save failed'));
+          }
+          if (rejectNextRefresh && message?.type === refreshType) {
+            rejectNextRefresh = false;
+            return new Promise((_, reject) => {
+              window.addEventListener('clearspace-smoke-reject-refresh', () => {
+                reject(new Error('Fixture update request failed'));
+              }, { once: true });
+            });
+          }
+          return sendMessage(message, ...args);
+        };
+      } else if (injectedFault === 'reload') {
+        chrome.tabs.reload = () => Promise.reject(new Error('Fixture tab reload failed'));
+      }
+    }, {
+      injectedFault: fault,
+      setPreferenceType: MESSAGE.SET_HOST_PREFERENCE,
+      refreshType: MESSAGE.REFRESH_SOURCES,
+    });
+  }
+  await popup.goto(`chrome-extension://${extensionId}/popup.html`);
+  await target.bringToFront();
+  await popup.reload();
+  await popup.locator('#hostname').filter({ hasText: /^public\.test$/ }).waitFor();
+  return popup;
+}
+
 async function stopServiceWorker(context, page, scriptUrl) {
   const session = await context.newCDPSession(page);
   let version;
@@ -174,17 +219,19 @@ try {
   const popupTarget = await context.newPage();
   await popupTarget.goto(`http://public.test:${port}/`, { waitUntil: 'domcontentloaded' });
   await popupTarget.locator('style[data-clearspace="cosmetic"]').waitFor({ state: 'attached' });
-  await popupTarget.bringToFront();
-  const popup = await context.newPage();
-  await popup.goto(`chrome-extension://${extensionId}/popup.html`);
-  await popupTarget.bringToFront();
-  await popup.reload();
-  await popup.locator('#hostname').filter({ hasText: /^public\.test$/ }).waitFor();
-  if (!await popup.locator('#enabled').isChecked()) throw new Error('Popup did not show enabled host status');
+  const popup = await openPopup(context, extensionId, popupTarget);
+  const popupToggle = popup.getByRole('switch', { name: 'Clean up this site' });
+  if (!await popupToggle.isChecked()) throw new Error('Popup did not show enabled host status');
+  await popup.locator('#site-status').filter({ hasText: /^On for this site$/ }).waitFor();
+  if (await popup.locator('#hostname').getAttribute('title') !== 'public.test') {
+    throw new Error('Popup did not preserve the full hostname in its title');
+  }
   const workerStatusBeforeToggle = await send(harness, MESSAGE.GET_APPLICABLE_SELECTORS, { hostname: 'public.test' });
   if (workerStatusBeforeToggle.enabled !== true) throw new Error('Worker was not enabled before the popup toggle');
-  await popup.locator('#refresh').click();
-  await popup.locator('#refresh-result').filter({ hasText: 'Both sources refreshed' }).waitFor();
+  const updates = popup.locator('details');
+  if (await updates.count() !== 1 || await updates.getAttribute('open') !== null) {
+    throw new Error('Popup Updates disclosure was not closed by default');
+  }
   if (process.env.CLEARSPACE_POPUP_SCREENSHOT) {
     const screenshotPath = path.resolve(repoRoot, process.env.CLEARSPACE_POPUP_SCREENSHOT);
     await mkdir(path.dirname(screenshotPath), { recursive: true });
@@ -194,17 +241,17 @@ try {
       scale: 'device',
     });
   }
+  await updates.locator('summary').click();
+  if (await updates.getAttribute('open') === null) throw new Error('Popup Updates disclosure did not open');
+  const refreshButton = popup.locator('#refresh');
+  await refreshButton.click();
+  await popup.locator('#refresh-result').filter({ hasText: /^Updates checked\.$/ }).waitFor();
+  if (!await refreshButton.isEnabled()) throw new Error('Popup update control did not re-enable');
   const navigationTimestamp = await popupTarget.evaluate(() => performance.timeOrigin);
   const popupClosed = popup.waitForEvent('close');
-  await popup.locator('#enabled').evaluate((input) => {
-    input.checked = false;
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  });
+  await popupToggle.click();
   await waitForHostEnabled(harness, 'public.test', false);
-  await harness.waitForFunction(async () => {
-    const stored = await chrome.storage.local.get('hostPreferences');
-    return stored.hostPreferences?.disabledPublicHosts?.includes('public.test');
-  });
+  await waitForStoredPublicHostEnabled(harness, 'public.test', false);
   await popupTarget.waitForFunction((before) => performance.timeOrigin !== before, navigationTimestamp);
   await popupClosed;
   await popupTarget.close();
@@ -212,14 +259,94 @@ try {
   await disabledPage.goto(`http://public.test:${port}/`, { waitUntil: 'domcontentloaded' });
   await disabledPage.locator('#generic-ad').waitFor({ state: 'visible' });
   if (await display(disabledPage, '#generic-ad') === 'none') throw new Error('Popup preference did not disable the hostname on a new navigation');
+  const reenablePopup = await openPopup(context, extensionId, disabledPage);
+  const reenableToggle = reenablePopup.locator('#enabled');
+  if (await reenableToggle.isChecked()) throw new Error('Popup did not show disabled host status');
+  await reenablePopup.locator('#site-status').filter({ hasText: /^Off for this site$/ }).waitFor();
+  const reenableTimestamp = await disabledPage.evaluate(() => performance.timeOrigin);
+  const reenablePopupClosed = reenablePopup.waitForEvent('close');
+  await reenableToggle.press('Space');
+  await waitForHostEnabled(harness, 'public.test', true);
+  await waitForStoredPublicHostEnabled(harness, 'public.test', true);
+  await disabledPage.waitForFunction((before) => performance.timeOrigin !== before, reenableTimestamp);
+  await reenablePopupClosed;
+  await disabledPage.locator('style[data-clearspace="cosmetic"]').waitFor({ state: 'attached' });
   await disabledPage.close();
-  await send(harness, MESSAGE.SET_HOST_PREFERENCE, { hostname: 'public.test', enabled: true });
-  await harness.waitForFunction(async () => {
-    const stored = await chrome.storage.local.get('hostPreferences');
-    return !stored.hostPreferences?.disabledPublicHosts?.includes('public.test');
-  });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('style[data-clearspace="cosmetic"]').waitFor({ state: 'attached' });
+
+  const saveFailurePopup = await openPopup(context, extensionId, page, 'save');
+  try {
+    const toggle = saveFailurePopup.locator('#enabled');
+    if (!await toggle.isChecked()) throw new Error('Save-failure popup did not start enabled');
+    await toggle.press('Space');
+    await saveFailurePopup.locator('#site-status').filter({ hasText: /save|update|failed|couldn|unable|error/i }).waitFor();
+    if (!await toggle.isChecked() || !await toggle.isEnabled()) {
+      throw new Error('Popup did not roll back and re-enable the toggle after a failed preference save');
+    }
+    const status = await send(harness, MESSAGE.GET_APPLICABLE_SELECTORS, { hostname: 'public.test' });
+    if (!status.ok || status.enabled !== true) throw new Error('Failed popup save changed the worker preference');
+    const stored = await harness.evaluate(() => chrome.storage.local.get('hostPreferences'));
+    if (stored.hostPreferences?.disabledPublicHosts?.includes('public.test')) {
+      throw new Error('Failed popup save persisted the disabled hostname');
+    }
+  } finally {
+    await saveFailurePopup.close();
+  }
+
+  const reloadFailurePopup = await openPopup(context, extensionId, page, 'reload');
+  const pageTimestampBeforeReloadFailure = await page.evaluate(() => performance.timeOrigin);
+  try {
+    const toggle = reloadFailurePopup.locator('#enabled');
+    if (!await toggle.isChecked()) throw new Error('Reload-failure popup did not start enabled');
+    await toggle.click();
+    await waitForHostEnabled(harness, 'public.test', false);
+    await waitForStoredPublicHostEnabled(harness, 'public.test', false);
+    await reloadFailurePopup.locator('#site-status').filter({ hasText: /reload/i }).waitFor();
+    if (await toggle.isChecked() || !await toggle.isEnabled()) {
+      throw new Error('Popup did not retain the saved value and re-enable the toggle after reload failed');
+    }
+    if (await page.evaluate(() => performance.timeOrigin) !== pageTimestampBeforeReloadFailure) {
+      throw new Error('Target page reloaded despite the injected reload failure');
+    }
+  } finally {
+    await reloadFailurePopup.close();
+    await send(harness, MESSAGE.SET_HOST_PREFERENCE, { hostname: 'public.test', enabled: true });
+    await waitForStoredPublicHostEnabled(harness, 'public.test', true);
+  }
+
+  const unavailablePopup = await context.newPage();
+  await unavailablePopup.goto(`chrome-extension://${extensionId}/popup.html`);
+  await harness.bringToFront();
+  await unavailablePopup.reload();
+  await unavailablePopup.locator('#site-status').filter({ hasText: /^Open a website to use Clearspace\.$/ }).waitFor();
+  const unavailableToggle = unavailablePopup.locator('#enabled');
+  if (await unavailableToggle.isChecked() || await unavailableToggle.isEnabled()) {
+    throw new Error('Unavailable popup exposed an active site setting');
+  }
+  if (!await unavailablePopup.locator('#hostname').isHidden()) {
+    throw new Error('Unavailable popup showed a hostname');
+  }
+  await unavailablePopup.close();
+
+  const updateFailurePopup = await openPopup(context, extensionId, page, 'refresh');
+  try {
+    await updateFailurePopup.locator('summary').click();
+    const updateButton = updateFailurePopup.locator('#refresh');
+    await updateButton.click();
+    if (await updateButton.isEnabled()) throw new Error('Popup update control stayed enabled while checking');
+    await updateFailurePopup.evaluate(() => {
+      window.dispatchEvent(new Event('clearspace-smoke-reject-refresh'));
+    });
+    const result = updateFailurePopup.locator('#refresh-result');
+    await result.filter({ hasText: /^Couldn't check for updates\. Try again\.$/ }).waitFor();
+    if (!await updateButton.isEnabled()) throw new Error('Popup update control did not allow a retry');
+    if ((await result.textContent())?.includes('Fixture')) throw new Error('Popup exposed a raw update error');
+    await updateButton.click();
+    await result.filter({ hasText: /^Updates checked\.$/ }).waitFor();
+  } finally {
+    await updateFailurePopup.close();
+  }
 
   const dailyBefore = await harness.evaluate(() => chrome.alarms.get('clearspace-refresh-daily'));
   const workerUrl = worker.url();
@@ -272,8 +399,11 @@ try {
       'offline bundled-seed startup',
       'manual refresh',
       'independent source failure and last-known-good retention',
-      'popup status',
-      'popup manual refresh',
+      'popup On and Off status',
+      'popup unavailable state',
+      'popup manual update success and retry',
+      'popup failed-save recovery',
+      'popup saved preference after reload failure',
     ],
   }, null, 2));
 } finally {

@@ -19,7 +19,7 @@ It was originally developed alongside [Blocky](https://0xerr0r.github.io/blocky/
 but it does not depend on Blocky or communicate with any network blocker.
 
 <p align="center">
-  <img src="docs/images/popup.png" width="310" alt="Clearspace popup showing controls for public.test and current rule sources">
+  <img src="docs/images/popup.png" width="280" alt="Clearspace popup with cleanup on for public.test and a collapsed Updates control">
 </p>
 
 ## Why Clearspace?
@@ -54,9 +54,10 @@ directory Chromium needs for an unpacked installation.
 ## Use
 
 Clearspace is enabled by default for public HTTP(S) sites. Open the toolbar
-popup to disable or re-enable the exact hostname, inspect the two rule-source
-versions, or request an immediate refresh. Local and private hosts are excluded
-by default and can be enabled individually from their own page.
+popup to turn cleanup on or off for the current site. Rules update automatically.
+To check for updates yourself, open **Updates** and select **Check now**.
+Local and private hosts are excluded by default and can be enabled individually
+from their own page.
 
 ```mermaid
 flowchart LR
@@ -121,7 +122,7 @@ attribution and licenses.
 | --- | --- |
 | `background.js`, `src/worker-service.js` | Chrome event adapter and worker state |
 | `src/content/entry.js` | Page-side behavior, bundled as classic `content.js` |
-| `popup.*` | Exact-host controls and rule status UI |
+| `popup.*` | Site toggle and optional rule updates |
 | `src/` | Checked JavaScript for parsing, validation, persistence, protocol, and host logic |
 | `rules/` | Bundled offline snapshots and local cosmetic overrides |
 | `tests/`, `fixtures/` | Unit and browser acceptance coverage |

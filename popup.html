@@ -8,22 +8,24 @@
   </head>
   <body>
     <header>
-      <img src="icons/icon32.png" width="28" height="28" alt="">
-      <div><strong>Clearspace</strong><span id="hostname">Checking current page…</span></div>
+      <img src="icons/icon32.png" width="24" height="24" alt="">
+      <strong>Clearspace</strong>
     </header>
-    <label class="toggle-row" for="enabled">
-      <span><strong>Clean up this site</strong><small id="scope-note">Exact hostname preference</small></span>
-      <input id="enabled" type="checkbox" disabled>
+    <label class="site-row" for="enabled">
+      <span class="site">
+        <span id="hostname" class="hostname" title="" hidden></span>
+        <span id="site-status" class="status" role="status">Checking current page...</span>
+      </span>
+      <input id="enabled" type="checkbox" role="switch" aria-label="Clean up this site" aria-describedby="hostname" disabled>
     </label>
-    <section aria-labelledby="sources-title">
-      <h2 id="sources-title">Rule sources</h2>
-      <dl>
-        <div><dt>Hagezi Pro</dt><dd id="hagezi-status">Loading…</dd></div>
-        <div><dt>EasyList</dt><dd id="easylist-status">Loading…</dd></div>
-      </dl>
-      <p id="refresh-result" role="status"></p>
-      <button id="refresh" type="button">Refresh now</button>
-    </section>
+    <details>
+      <summary>Updates</summary>
+      <div class="updates">
+        <p>Updates happen automatically.</p>
+        <p id="refresh-result" role="status" hidden></p>
+        <button id="refresh" type="button">Check now</button>
+      </div>
+    </details>
     <script type="module" src="popup.js"></script>
   </body>
 </html>
