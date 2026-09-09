@@ -1,0 +1,26 @@
+[tools]
+node = "24.19.0"
+
+[tasks.install]
+description = "Install locked development dependencies"
+run = "npm ci"
+
+[tasks."install:browser"]
+description = "Install the Chromium version used by the locked Playwright package"
+run = "node node_modules/playwright-core/cli.js install chromium"
+
+[tasks.test]
+description = "Run unit tests"
+run = "npm test"
+
+[tasks.package]
+description = "Build the unpacked extension"
+run = "npm run package:release"
+
+[tasks."test:browser"]
+description = "Build and exercise the extension in Chromium"
+run = ["npm run package:release", "npm run test:browser"]
+
+[tasks.check]
+description = "Check types, unit behavior, packaging, and browser behavior"
+run = "npm run check"
