@@ -27,7 +27,7 @@ const ONE_HOUR_MINUTES = 60;
 const DEFAULT_PREFERENCES = Object.freeze({ disabledPublicHosts: [], enabledPrivateHosts: [] });
 
 /**
- * Preserve an existing daily deadline. Chrome creates the periodic alarm only once.
+ * Preserve an existing daily deadline. Creating an alarm with the same name replaces that deadline.
  *
  * @param {Pick<AlarmStore, 'get' | 'create'>} [alarms]
  * @returns {Promise<void>}
