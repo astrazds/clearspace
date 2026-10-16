@@ -24,10 +24,13 @@ test('excludes named private hosts and literal private address ranges', () => {
     'localhost', 'box.local', 'router.lan',
     '127.0.0.1', '10.1.2.3', '172.31.2.3', '192.168.2.2',
     '169.254.1.1', '100.127.2.3', '::1', 'fc00::12', 'fdff::2', 'fe80::1',
+    '[::ffff:7f00:1]', '::ffff:127.0.0.1', '::ffff:a01:203', '::ffff:c0a8:1',
   ]) assert.equal(isPrivateHostname(host), true, host);
-  for (const host of ['example.com', '8.8.8.8', '172.32.0.1', '100.128.0.1', '2001:4860:4860::8888']) {
+  for (const host of ['example.com', '8.8.8.8', '172.32.0.1', '100.128.0.1', '2001:4860:4860::8888', '::ffff:808:808']) {
     assert.equal(isPrivateHostname(host), false, host);
   }
+  assert.equal(hostEnabled('[::ffff:7f00:1]', {}), false);
+  assert.equal(hostEnabled('::ffff:808:808', {}), true);
 });
 
 test('stores exact public disables and private opt-ins separately', () => {
