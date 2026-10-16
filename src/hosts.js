@@ -89,9 +89,22 @@ function isPrivateIpv4(parts) {
 }
 
 /** @param {string} host */
+function ipv4MappedParts(host) {
+  const dotted = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(host);
+  if (dotted) return parseIpv4(dotted[1]);
+  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i.exec(host);
+  if (!hex) return null;
+  const high = Number.parseInt(hex[1], 16);
+  const low = Number.parseInt(hex[2], 16);
+  return [(high >> 8) & 0xff, high & 0xff, (low >> 8) & 0xff, low & 0xff];
+}
+
+/** @param {string} host */
 function isPrivateIpv6(host) {
   if (!host.includes(':')) return false;
   if (host === '::1') return true;
+  const mapped = ipv4MappedParts(host);
+  if (mapped) return isPrivateIpv4(mapped);
   const first = Number.parseInt(host.split(':')[0] || '0', 16);
   return (first & 0xfe00) === 0xfc00 || (first & 0xffc0) === 0xfe80;
 }
