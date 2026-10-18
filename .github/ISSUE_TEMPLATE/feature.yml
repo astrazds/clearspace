@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose a cosmetic cleanup change.
+title: "[Feature]: "
+labels:
+  - enhancement
+type: Feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Clearspace is cosmetic-only. It does not intercept requests, read browsing history, or use cookies.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What cosmetic gap should Clearspace handle?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+    validations:
+      required: true

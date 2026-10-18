@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a cosmetic cleanup problem in Clearspace.
+title: "[Bug]: "
+labels:
+  - bug
+type: Bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report a suspected vulnerability through [GitHub Security Advisories](https://github.com/astrazds/clearspace/security/advisories/new). This form is public.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the cosmetic gap or collapse that went wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: input
+    id: extension-version
+    attributes:
+      label: Clearspace version
+      description: The version shown on chrome://extensions.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: chromium-version
+    attributes:
+      label: Chromium version
+      description: The browser version from chrome://version.
+      placeholder: "152"
+    validations:
+      required: true
+  - type: dropdown
+    id: page-kind
+    attributes:
+      label: Page kind
+      description: Clearspace excludes local and private hosts by default.
+      options:
+        - Public site
+        - Local or private host
+        - Not sure
+    validations:
+      required: true
