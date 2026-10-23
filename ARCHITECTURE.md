@@ -12,7 +12,8 @@ user interaction with those two actors.
 | EasyList parsing and cosmetic exceptions | `src/easylist.js` | `tests/easylist.test.mjs` |
 | HaGeZi parsing | `src/hagezi.js` | `tests/hagezi.test.mjs` |
 | Host normalization, private defaults, exact-host policy | `src/hosts.js` | `tests/hosts.test.mjs` |
-| Worker initialization, refresh, cache publication, alarms | `src/worker-service.js` | Packaged browser scenarios in `scripts/smoke.mjs` |
+| Worker initialization, refresh, cache publication | `src/worker-service.js` | Packaged browser scenarios in `scripts/smoke.mjs` |
+| Daily deadline and source retry alarms | `src/refresh-clock.js` | `tests/refresh-clock.test.mjs` and the packaged restart scenario in `scripts/smoke.mjs` |
 | IndexedDB schema and atomic source replacement | `src/db.js` | Browser restart and failed-refresh scenarios |
 | Message names and payload contracts | `src/protocol.js` | `tests/protocol.test.mjs`, `tests/typecheck/protocol.js` |
 | Chrome worker events and message dispatch | `background.js` | Packaged browser scenarios |

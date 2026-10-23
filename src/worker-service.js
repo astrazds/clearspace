@@ -1,51 +1,28 @@
 import { getAllRecords, getRecord, putMetadata, replaceSourceAtomically } from './db.js';
 import { mergeEasyLists, parseEasyList, resolveSelectors } from './easylist.js';
 import { createSuffixMatcher, hostEnabled, normalizeHostname, updateHostPreference } from './hosts.js';
+import { createRefreshClock } from './refresh-clock.js';
 import { refreshSource, sha256, SOURCE_CONFIG, validateAndCompile } from './source-validation.js';
 
-export const DAILY_ALARM = 'clearspace-refresh-daily';
-const RETRY_PREFIX = 'clearspace-refresh-retry-';
 const PREFERENCES_KEY = 'hostPreferences';
-const ONE_DAY_MINUTES = 24 * 60;
-const ONE_HOUR_MINUTES = 60;
 
 /** @typedef {import('./hosts.js').HostPreferences} HostPreferences */
+/** @typedef {import('./refresh-clock.js').RefreshClock} RefreshClock */
 /** @typedef {import('./source-validation.js').RefreshResult} RefreshResult */
 /** @typedef {import('./source-validation.js').SeedSourceDefinition} SeedSourceDefinition */
 /** @typedef {import('./source-validation.js').SourceId} SourceId */
 /** @typedef {import('./source-validation.js').SourceMetadata} SourceMetadata */
 /** @typedef {{ scheduleRetry: boolean }} RefreshOptions */
-/**
- * @typedef {{
- *   get(name: string): Promise<chrome.alarms.Alarm | undefined>,
- *   create(name: string, alarmInfo: chrome.alarms.AlarmCreateInfo): Promise<void>,
- *   clear(name: string): Promise<boolean>,
- * }} AlarmStore
- */
 
 /** @type {Readonly<HostPreferences>} */
 const DEFAULT_PREFERENCES = Object.freeze({ disabledPublicHosts: [], enabledPrivateHosts: [] });
 
 /**
- * Preserve an existing daily deadline. Creating an alarm with the same name replaces that deadline.
+ * Own the worker's cached rules, persistence operations, refresh policy, and preferences.
  *
- * @param {Pick<AlarmStore, 'get' | 'create'>} [alarms]
- * @returns {Promise<void>}
+ * @param {RefreshClock} [clock]
  */
-export async function ensureDailyRefreshAlarm(alarms = chrome.alarms) {
-  if (await alarms.get(DAILY_ALARM)) return;
-  await alarms.create(DAILY_ALARM, {
-    delayInMinutes: ONE_DAY_MINUTES,
-    periodInMinutes: ONE_DAY_MINUTES,
-  });
-}
-
-/**
- * Own the worker's cached rules, persistence operations, refresh policy, preferences, and alarms.
- *
- * @param {AlarmStore} [alarms]
- */
-export function createWorkerService(alarms = chrome.alarms) {
+export function createWorkerService(clock = createRefreshClock()) {
   /** @type {Promise<void> | undefined} */
   let initializationPromise;
   /** @type {ReturnType<typeof createSuffixMatcher> | undefined} */
@@ -125,7 +102,7 @@ export function createWorkerService(alarms = chrome.alarms) {
       initializationPromise = (async () => {
         await Promise.all(Object.values(SOURCE_CONFIG).map(seedSource));
         await hydrateCaches();
-        await ensureDailyRefreshAlarm(alarms);
+        await clock.ensureDailyDeadline();
       })().catch((error) => {
         initializationPromise = undefined;
         throw error;
@@ -155,9 +132,7 @@ export function createWorkerService(alarms = chrome.alarms) {
       },
     };
     await putMetadata(metadata);
-    if (scheduleRetry) {
-      await alarms.create(`${RETRY_PREFIX}${source.id}`, { delayInMinutes: ONE_HOUR_MINUTES });
-    }
+    if (scheduleRetry) await clock.armRetry(source.id);
     return metadata.lastResult;
   }
 
@@ -197,7 +172,7 @@ export function createWorkerService(alarms = chrome.alarms) {
         };
         await putMetadata(metadata);
       }
-      await alarms.clear(`${RETRY_PREFIX}${source.id}`);
+      await clock.disarmRetry(source.id);
       return metadata.lastResult;
     } catch (error) {
       return updateRefreshFailure(source, error, scheduleRetry);
@@ -275,14 +250,16 @@ export function createWorkerService(alarms = chrome.alarms) {
    * @returns {Promise<void>}
    */
   async function handleAlarm(name) {
-    if (name === DAILY_ALARM) {
-      await refreshAll({ scheduleRetry: true });
-      return;
-    }
-    if (!name.startsWith(RETRY_PREFIX)) return;
-    const sourceId = name.slice(RETRY_PREFIX.length);
-    if (sourceId === 'hagezi' || sourceId === 'easylist') {
-      await refreshOne(SOURCE_CONFIG[sourceId], { scheduleRetry: false });
+    const signal = clock.read(name);
+    switch (signal.kind) {
+      case 'daily':
+        await refreshAll({ scheduleRetry: true });
+        return;
+      case 'retry':
+        await refreshOne(SOURCE_CONFIG[signal.sourceId], { scheduleRetry: false });
+        return;
+      case 'ignore':
+        return;
     }
   }
 
