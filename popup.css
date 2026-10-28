@@ -45,6 +45,22 @@ header img {
   gap: 2px;
 }
 
+.recovery {
+  padding: 0 16px 16px;
+}
+
+.recovery button {
+  font-size: 12px;
+}
+
+#refresh-result {
+  color: CanvasText;
+}
+
+#refresh-reassurance {
+  margin-top: -6px;
+}
+
 .hostname {
   overflow: hidden;
   font-weight: 600;

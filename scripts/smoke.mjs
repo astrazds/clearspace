@@ -1,30 +1,15 @@
-import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { existsSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright-core';
+import { launchExtension } from './browser.mjs';
 import { MESSAGE, makeRequest } from '../src/protocol.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(await readFile(path.join(repoRoot, 'manifest.json'), 'utf8'));
 const extensionSource = path.join(repoRoot, 'dist', 'unpacked', `clearspace-${manifest.version}`);
 const fixturesRoot = path.join(repoRoot, 'fixtures');
-
-function chromiumExecutable() {
-  if (process.env.CHROMIUM_EXECUTABLE) return process.env.CHROMIUM_EXECUTABLE;
-  const systemExecutable = execFileSync(
-    'bash',
-    ['-lc', 'command -v chromium || command -v chromium-browser || command -v google-chrome || command -v google-chrome-stable || true'],
-    { encoding: 'utf8' },
-  ).trim();
-  if (systemExecutable) return systemExecutable;
-  const playwrightExecutable = chromium.executablePath();
-  if (existsSync(playwrightExecutable)) return playwrightExecutable;
-  throw new Error('Chromium executable not found; run `mise run install:browser`');
-}
 
 function testHagezi() {
   return ['# Version: smoke-1', '*.ads.fixture.test', ...Array.from({ length: 1_000 }, (_, index) => `*.ad-${index}.fixture.invalid`)].join('\n');
@@ -155,13 +140,9 @@ const { server, port } = await createFixtureServer();
 let context;
 
 try {
-  context = await chromium.launchPersistentContext(userDataDir, {
-    executablePath: chromiumExecutable(),
-    headless: true,
+  context = await launchExtension(userDataDir, extensionDir, {
     deviceScaleFactor: process.env.CLEARSPACE_POPUP_SCREENSHOT ? 2 : 1,
     args: [
-      `--disable-extensions-except=${extensionDir}`,
-      `--load-extension=${extensionDir}`,
       '--host-resolver-rules=MAP public.test 127.0.0.1, MAP frame.public.test 127.0.0.1, MAP private.local 127.0.0.1',
       '--no-proxy-server',
       '--disable-background-networking',
@@ -222,7 +203,7 @@ try {
   const popup = await openPopup(context, extensionId, popupTarget);
   const popupToggle = popup.getByRole('switch', { name: 'Clean up this site' });
   if (!await popupToggle.isChecked()) throw new Error('Popup did not show enabled host status');
-  await popup.locator('#site-status').filter({ hasText: /^On for this site$/ }).waitFor();
+  await popup.locator('#site-status').filter({ hasText: /^Cleanup is on$/ }).waitFor();
   if (await popup.locator('#hostname').getAttribute('title') !== 'public.test') {
     throw new Error('Popup did not preserve the full hostname in its title');
   }
@@ -245,7 +226,7 @@ try {
   if (await updates.getAttribute('open') === null) throw new Error('Popup Updates disclosure did not open');
   const refreshButton = popup.locator('#refresh');
   await refreshButton.click();
-  await popup.locator('#refresh-result').filter({ hasText: /^Updates checked\.$/ }).waitFor();
+  await popup.locator('#refresh-result').filter({ hasText: /^Rules (updated|are up to date)\.$/ }).waitFor();
   if (!await refreshButton.isEnabled()) throw new Error('Popup update control did not re-enable');
   const navigationTimestamp = await popupTarget.evaluate(() => performance.timeOrigin);
   const popupClosed = popup.waitForEvent('close');
@@ -262,7 +243,7 @@ try {
   const reenablePopup = await openPopup(context, extensionId, disabledPage);
   const reenableToggle = reenablePopup.locator('#enabled');
   if (await reenableToggle.isChecked()) throw new Error('Popup did not show disabled host status');
-  await reenablePopup.locator('#site-status').filter({ hasText: /^Off for this site$/ }).waitFor();
+  await reenablePopup.locator('#site-status').filter({ hasText: /^Cleanup is off$/ }).waitFor();
   const reenableTimestamp = await disabledPage.evaluate(() => performance.timeOrigin);
   const reenablePopupClosed = reenablePopup.waitForEvent('close');
   await reenableToggle.press('Space');
@@ -319,7 +300,7 @@ try {
   await unavailablePopup.goto(`chrome-extension://${extensionId}/popup.html`);
   await harness.bringToFront();
   await unavailablePopup.reload();
-  await unavailablePopup.locator('#site-status').filter({ hasText: /^Open a website to use Clearspace\.$/ }).waitFor();
+  await unavailablePopup.locator('#site-status').filter({ hasText: /^Cleanup isn't available on this page\.$/ }).waitFor();
   const unavailableToggle = unavailablePopup.locator('#enabled');
   if (await unavailableToggle.isChecked() || await unavailableToggle.isEnabled()) {
     throw new Error('Unavailable popup exposed an active site setting');
@@ -339,11 +320,11 @@ try {
       window.dispatchEvent(new Event('clearspace-smoke-reject-refresh'));
     });
     const result = updateFailurePopup.locator('#refresh-result');
-    await result.filter({ hasText: /^Couldn't check for updates\. Try again\.$/ }).waitFor();
+    await result.filter({ hasText: /^Couldn't check for updates\.$/ }).waitFor();
     if (!await updateButton.isEnabled()) throw new Error('Popup update control did not allow a retry');
     if ((await result.textContent())?.includes('Fixture')) throw new Error('Popup exposed a raw update error');
     await updateButton.click();
-    await result.filter({ hasText: /^Updates checked\.$/ }).waitFor();
+    await result.filter({ hasText: /^Rules (updated|are up to date)\.$/ }).waitFor();
   } finally {
     await updateFailurePopup.close();
   }

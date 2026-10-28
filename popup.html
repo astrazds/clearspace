@@ -18,11 +18,15 @@
       </span>
       <input id="enabled" type="checkbox" role="switch" aria-label="Clean up this site" aria-describedby="hostname" disabled>
     </label>
+    <div id="recovery" class="recovery" hidden>
+      <button id="reload" type="button">Reload page</button>
+    </div>
     <details>
       <summary>Updates</summary>
       <div class="updates">
-        <p>Updates happen automatically.</p>
+        <p>Rules update automatically.</p>
         <p id="refresh-result" role="status" hidden></p>
+        <p id="refresh-reassurance" hidden>Saved rules are still active.</p>
         <button id="refresh" type="button">Check now</button>
       </div>
     </details>
