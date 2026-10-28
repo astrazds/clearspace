@@ -30,3 +30,45 @@ Browser verification runs the packaged extension in an isolated profile.
 Explain the problem, the chosen approach, and how you verified it. Add or update
 tests for behavioral changes. By contributing, you agree that your contribution
 is licensed under the repository's GPL-3.0-only license.
+
+## Version labels
+
+Every PR needs exactly one label before merging:
+
+| Label | Use | Example |
+| --- | --- | --- |
+| `release:minor` | Features, including a mixture of features and fixes | `0.1.1` → `0.2.0` |
+| `release:patch` | Fixes without a new feature | `0.1.0` → `0.1.1` |
+| `release:none` | Documentation, tests, or maintenance with no product change | Version unchanged |
+
+Use `minor` for a feature plus fixes; do not apply two release labels. The
+Release label check rejects missing/conflicting labels and bumps on PRs whose
+files are exclusively documentation or tests. Reviewers decide the meaning of
+other changes, including dependency and build changes. Major releases require
+an explicit policy change; they are never inferred automatically.
+
+After successful CI on `main`, **Version merged PRs** processes every unrecorded
+merge in main's first-parent order. It creates one bot commit per PR, updating
+`package.json`, `package-lock.json`, and `manifest.json` together for features
+and fixes. No-release PRs get only a processing record. Do not bump versions or
+edit `release-state.json` in ordinary PRs. The activation baseline excludes old
+PRs; the PR introducing this system is its first minor release (`0.2.0`).
+
+The workflow runs the full gate before each push because bot-token pushes do
+not start ordinary push CI. Packaging also rejects inconsistent versions.
+Chrome-compatible versions are numeric `major.minor.patch` values with each
+component at most 65535; reaching a limit fails rather than wrapping.
+
+If the workflow fails, inspect its first error. Correct an unprocessed PR's
+release label if necessary, fix failing code through a PR, or restore the bot's
+existing permission to push under the repository's approved policy. Then run
+**Actions → Version merged PRs → Run workflow**, choosing `main`. It resumes
+from the durable record without bumping completed PRs again. Changing labels
+after a PR is recorded does not rewrite its version. Never delete processing
+records or force-push to retry. Future branch protection that disallows bot
+commits needs an explicit workflow redesign; the job will not bypass it.
+
+Build with `mise run package` after pulling the version commit. The unpacked
+directory includes the new version, so select that directory when loading the
+new build in Chrome. Versioning does not publish to an extension store, create
+GitHub releases/tags, or reload installed extensions.

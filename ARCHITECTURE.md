@@ -21,6 +21,8 @@ user interaction with those two actors.
 | Toolbar controls and status | `popup.js`, `popup.html`, `popup.css` | Browser popup scenarios and screenshot capture |
 | Release contents and content-script compilation | `scripts/package.mjs` | Package the extension, then run browser scenarios |
 | Tool versions and common tasks | `mise.toml` | `mise run check` |
+| Release classification and version consistency | `scripts/version-policy.mjs`, `scripts/version-files.mjs` | `tests/versioning.test.mjs` |
+| Merge reconciliation and publication | `scripts/version-reconcile.mjs`, `scripts/version-git.mjs`, `scripts/version-github.mjs` | `tests/version-reconcile.test.mjs`, `tests/version-git.test.mjs`, `tests/version-github.test.mjs` |
 
 ## Follow the data
 
@@ -99,6 +101,20 @@ introducing a shared global or making modules web-accessible. The bundler's
 JavaScript before release.
 
 ## Preserve these external contracts
+
+Release automation owns the extension/package version, independently of the
+protocol and database versions below. `release-state.json` records the baseline
+and each processed PR with its merge commit, classification, and resulting
+version. The reconciliation coordinator enforces that this record is a prefix
+of main's merge order. The Git adapter uses only a disposable Actions checkout;
+after a rejected concurrent push it fetches, recomputes, and verifies again.
+Only version files and the processing record may enter a bot commit.
+
+PR label validation has read-only permissions. The publishing workflow accepts
+only successful main push CI or a manual main retry, executes trusted main code,
+and runs the complete gate itself before publishing. It does not trust PR-run
+artifacts or rely on another CI run from its own token-authenticated push.
+See [version labels and recovery](CONTRIBUTING.md#version-labels).
 
 - Clearspace is cosmetic-only. Keep the manifest permissions and two source URLs
   narrowly scoped. Do not add request interception or export visited hosts.
