@@ -33,7 +33,10 @@ Pro, while keeping page classification and preferences inside the extension.
 
 Clearspace is currently distributed as an unpacked extension. Chromium 152 is
 the browser version presently tested; other Chromium releases with Manifest V3
-support may also work.
+support may also work. macOS Safari 27.2 has passed a limited manual smoke test
+using the same package; Safari support is experimental. iOS Safari is untested.
+
+### Build the package
 
 1. Install [mise](https://mise.jdx.dev/) and run `mise install` to select the
    project's pinned Node.js version.
@@ -44,16 +47,27 @@ support may also work.
    mise run package
    ```
 
-3. Open `chrome://extensions`, enable **Developer mode**, and choose
+### Load in Chromium
+
+1. Open `chrome://extensions`, enable **Developer mode**, and choose
    **Load unpacked**.
-4. Select `dist/unpacked/clearspace-<version>`.
+2. Select `dist/unpacked/clearspace-<version>`.
 
 No ZIP archive is produced. The release command intentionally creates only the
-directory Chromium needs for an unpacked installation.
+directory used for an unpacked installation.
+
+### Try macOS Safari
+
+Safari 18.4 and later can temporarily load the built directory through
+**Settings → Developer → Add Temporary Extension** without an Xcode project.
+Safari removes temporary extensions after 24 hours or when it quits.
+See [Safari testing](docs/safari.md) for setup, verified behavior, and gaps.
 
 ## Use
 
-Clearspace is enabled by default for public HTTP(S) sites. Open the toolbar
+Clearspace is enabled by default for public HTTP(S) sites once the browser
+grants the extension access to the site. Safari's website-access permission is
+separate from Clearspace's cleanup switch. Open the toolbar
 popup to turn cleanup on or off for the current site. Rules update automatically.
 To check for updates yourself, open **Updates** and select **Check now**.
 Local and private hosts are excluded by default and can be enabled individually
@@ -145,7 +159,8 @@ mise run check
 ```
 
 `mise run check` checks runtime JavaScript contracts, runs unit tests, rebuilds
-the unpacked extension, and runs the complete browser suite. The browser test
+the unpacked extension, and runs the complete Chromium browser suite. This gate
+does not test Safari. The browser test
 uses a system Chromium when available or Playwright's installed Chromium
 (`mise run install:browser`). `mise run test:browser` also
 rebuilds before testing. Edit source files instead of generated files in `dist/`.

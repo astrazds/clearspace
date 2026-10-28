@@ -23,7 +23,10 @@ to review.
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) to locate the owner and behavioral test
 for your change. Runtime JavaScript contracts are checked with TypeScript.
-Browser verification runs the packaged extension in an isolated profile.
+Automated browser verification runs the packaged extension in an isolated
+Chromium profile. For experimental macOS Safari checks, follow
+[Safari testing](docs/safari.md) and report the browser version and specific
+behaviors exercised. Do not infer Safari or iOS coverage from Chromium results.
 
 ## Pull requests
 

@@ -151,6 +151,13 @@ The isolated scenarios in `scripts/robustness.test.mjs` additionally exercise
 resource reuse, selected media, conditional exceptions, concurrent refreshes,
 and retry delivery while caches initialize, against packaged runtime code.
 
+macOS Safari can load the same package as a temporary extension. Its current
+verification is limited to manual popup, preference, private-host default, and
+cosmetic-rule smoke checks; it is not part of the automated gate. See
+[Safari testing](docs/safari.md) for the verified scope and reproduction steps.
+Safari refresh scheduling, background recovery, resource classification, frames,
+and iOS behavior remain unverified.
+
 To inspect popup appearance, set `CLEARSPACE_POPUP_SCREENSHOT` to a path under
 `artifacts/` when running `mise run test:browser`. The capture uses a device scale
 of two.
