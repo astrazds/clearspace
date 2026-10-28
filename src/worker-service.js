@@ -35,6 +35,8 @@ export function createWorkerService(clock = createRefreshClock()) {
   let cosmeticRules;
   /** @type {Promise<void>} */
   let preferenceWrites = Promise.resolve();
+  /** @type {Map<SourceId, Promise<void>>} */
+  const sourceRefreshes = new Map();
 
   function rebuildCosmeticRules() {
     if (!easyListRules || !overrideRules) throw new Error('Cosmetic rule caches are incomplete');
@@ -141,7 +143,7 @@ export function createWorkerService(clock = createRefreshClock()) {
    * @param {RefreshOptions} options
    * @returns {Promise<RefreshResult>}
    */
-  async function refreshOne(source, { scheduleRetry }) {
+  async function performRefresh(source, { scheduleRetry }) {
     const previous = await getRecord('metadata', source.id);
     try {
       const result = await refreshSource({ source, previous });
@@ -177,6 +179,21 @@ export function createWorkerService(clock = createRefreshClock()) {
     } catch (error) {
       return updateRefreshFailure(source, error, scheduleRetry);
     }
+  }
+
+  /**
+   * Serialize the entire read/download/publish operation, including metadata-only
+   * results. Different sources can still refresh independently.
+   * @param {SeedSourceDefinition} source
+   * @param {RefreshOptions} options
+   */
+  function refreshOne(source, options) {
+    const operation = (sourceRefreshes.get(source.id) || Promise.resolve()).then(async () => {
+      await initialize();
+      return performRefresh(source, options);
+    });
+    sourceRefreshes.set(source.id, operation.then(() => {}, () => {}));
+    return operation;
   }
 
   /**

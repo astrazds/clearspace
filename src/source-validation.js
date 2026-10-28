@@ -51,10 +51,12 @@ import { parseHagezi } from './hagezi.js';
  *   fetchImpl?: typeof fetch,
  *   now?: number,
  *   thresholds?: SourceThresholds,
+ *   timeoutMs?: number,
  * }} RefreshSourceOptions
  */
 
 export const MAX_SOURCE_BYTES = 32 * 1024 * 1024;
+export const SOURCE_TIMEOUT_MS = 20_000;
 
 /** @type {Readonly<Record<SourceId, SeedSourceDefinition>>} */
 export const SOURCE_CONFIG = Object.freeze({
@@ -160,20 +162,30 @@ function acceptedCount(sourceId, stats) {
  * @param {RefreshSourceOptions} options
  * @returns {Promise<SourceRefresh>}
  */
-export async function refreshSource({ source, previous, fetchImpl = fetch, now = Date.now(), thresholds }) {
+export async function refreshSource({ source, previous, fetchImpl = fetch, now = Date.now(), thresholds, timeoutMs = SOURCE_TIMEOUT_MS }) {
   /** @type {RequestHeaders} */
   const headers = {};
   if (previous?.etag) headers['If-None-Match'] = previous.etag;
   if (previous?.lastModified) headers['If-Modified-Since'] = previous.lastModified;
-  const response = await fetchImpl(source.url, { cache: 'no-store', headers });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  let text;
+  try {
+    response = await fetchImpl(source.url, { cache: 'no-store', headers, signal: controller.signal });
+    if (response.status !== 304 && !response.ok) throw new Error(`${source.name} returned HTTP ${response.status}`);
+    text = response.status === 304 ? '' : await readResponseLimited(response);
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`${source.name} download timed out`);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (response.status === 304) {
     if (!previous) throw new Error(`${source.name} returned 304 without a local snapshot`);
     return { kind: 'not-modified', checkedAt: now, requestHeaders: headers };
   }
-  if (!response.ok) throw new Error(`${source.name} returned HTTP ${response.status}`);
-
-  const text = await readResponseLimited(response);
   const compiled = validateAndCompile(source.id, text, thresholds);
   const previousAccepted = acceptedCount(source.id, previous?.stats);
   const nextAccepted = acceptedCount(source.id, compiled.stats);

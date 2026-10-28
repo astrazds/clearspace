@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
 import {
   readResponseLimited,
   refreshSource,
@@ -80,3 +81,20 @@ test('a failed independent update leaves caller-owned last-known-good state inta
   }), /valid domains/);
   assert.deepEqual(state, { hagezi: { hash: 'kept' }, easylist: { hash: 'other' } });
 });
+
+for (const stage of ['headers', 'body']) {
+  test(`refresh deadline aborts a stalled ${stage} download`, async (t) => {
+    const server = createServer((_request, response) => {
+      if (stage === 'body') { response.writeHead(200); response.write('# Version: slow\n'); }
+      const timer = setTimeout(() => response.end(hageziText), 300);
+      response.on('close', () => clearTimeout(timer));
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    t.after(() => { server.closeAllConnections(); server.close(); });
+    await assert.rejects(() => refreshSource({
+      source: { id: 'hagezi', name: 'Hagezi', url: `http://127.0.0.1:${server.address().port}/` },
+      thresholds: { minimumHageziDomains: 2 },
+      timeoutMs: 50,
+    }), /timed out/i);
+  });
+}
