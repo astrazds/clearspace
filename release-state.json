@@ -8,6 +8,12 @@
       "mergeCommit": "fd73264ed448410179c64cbf7f552aa53e7ea9a0",
       "kind": "minor",
       "version": "0.2.0"
+    },
+    {
+      "pr": 10,
+      "mergeCommit": "a3f25d5ce43bbbba77e917130f884566c8ea332a",
+      "kind": "none",
+      "version": "0.2.0"
     }
   ]
 }
