@@ -1,6 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createGithub, mergedInOrder } from '../scripts/version-github.mjs';
+import { reconcile } from '../scripts/version-reconcile.mjs';
+
+test('metadata edits between API pages cannot skip an earlier merge and poison history', async () => {
+  const hash = n => n.toString(16).padStart(40, '0');
+  const earlier = { number: 9, merge_commit_sha: hash(9), merged_at: 'date', base: { ref: 'main' } };
+  const later = { number: 10, merge_commit_sha: hash(10), merged_at: 'date', base: { ref: 'main' } };
+  const filler = Array.from({ length: 99 }, (_, i) => ({ number: i + 11, merged_at: null }));
+  let durable = { version: '0.1.0', state: { schema: 1, baseline: hash(1), initialVersion: '0.1.0', processed: [] } };
+  let attempt;
+  const api = createGithub('owner/repo', async endpoint => {
+    const url = new URL(`https://api.github.com/${endpoint}`);
+    const stable = url.searchParams.get('state') === 'all' && url.searchParams.get('sort') === 'created'
+      && url.searchParams.get('direction') === 'asc' && !url.searchParams.has('base');
+    // On updated order, editing #9 after page one moves it out of page two.
+    // All-state creation order stays stable even across reopen/base/label edits.
+    if (url.searchParams.get('page') === '1') return stable ? [earlier, later, ...filler.slice(0, 98)] : [later, ...filler];
+    return stable ? filler.slice(98) : [filler.at(-1)];
+  });
+  const adapter = {
+    async snapshot() { return structuredClone({ ...durable, pulls: mergedInOrder([hash(9), hash(10)], await api.listMerged()) }); },
+    async describe() { return { labels: ['release:patch'], files: ['popup.js'] }; },
+    async apply(entry, state) { attempt = { version: entry.version, state }; },
+    async verify() {}, async commit() {},
+    async push() { durable = attempt; return true; },
+  };
+  await reconcile(adapter);
+  assert.deepEqual(durable.state.processed.map(e => e.pr), [9, 10]);
+  assert.equal(await reconcile(adapter), 0);
+});
 
 test('GitHub pagination includes all PR files and both sides of a rename', async () => {
   const calls = [];

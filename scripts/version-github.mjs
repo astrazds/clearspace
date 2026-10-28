@@ -20,7 +20,10 @@ export function createGithub(repository, request = ghApi) {
     }
   }
   return {
-    async listMerged() { return pages('pulls?state=closed&base=main&sort=updated&direction=desc'); },
+    // Scan an append-only ordering. Mutable state/base filters or updated sorting
+    // can move existing PRs between pages and silently omit an earlier merge.
+    // mergedInOrder filters main merges after the complete scan.
+    async listMerged() { return pages('pulls?state=all&sort=created&direction=asc'); },
     async describe(pull) {
       if (!Number.isSafeInteger(pull.number) || pull.number < 1) throw new Error('Invalid PR number');
       const details = await request(`${prefix}/pulls/${pull.number}`);
