@@ -2,5 +2,12 @@
   "schema": 1,
   "baseline": "29a233ad2db779ce164b203034530242cc6adce6",
   "initialVersion": "0.1.0",
-  "processed": []
+  "processed": [
+    {
+      "pr": 9,
+      "mergeCommit": "fd73264ed448410179c64cbf7f552aa53e7ea9a0",
+      "kind": "minor",
+      "version": "0.2.0"
+    }
+  ]
 }

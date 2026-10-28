@@ -1,6 +1,6 @@
 {
   "name": "clearspace",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Privacy-conscious cosmetic cleanup companion for Chromium",
   "private": true,
   "type": "module",
