@@ -51,3 +51,10 @@ test('exceptions and page flags apply across merged upstream and local lists', (
     '.local-ad', '.upstream-ad',
   ]);
 });
+
+test('conditional or unsupported page exceptions are not broadened to whole hosts', () => {
+  for (const options of ['generichide,domain=other.test', 'elemhide,third-party', 'generichide,~document', 'elemhide,badfilter']) {
+    const compiled = parseEasyList(`##.generic-ad\nexample.com##.site-ad\n@@||example.com^$${options}`);
+    assert.deepEqual(resolveSelectors(compiled, 'example.com'), ['.generic-ad', '.site-ad'], options);
+  }
+});

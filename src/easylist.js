@@ -112,6 +112,8 @@ function parsePageException(line) {
   const domain = normalizeHostname(match[1]);
   if (!isValidDomain(domain)) return null;
   const options = match[2].toLowerCase().split(',');
+  // Ignoring an option would broaden a conditional exception to the whole host.
+  if (options.some((option) => option !== 'elemhide' && option !== 'generichide')) return null;
   const kinds = options.filter((option) => option === 'elemhide' || option === 'generichide');
   return kinds.length ? { domain, kinds } : null;
 }
