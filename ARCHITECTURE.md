@@ -46,17 +46,29 @@ A source refresh validates and hashes a download before replacing the source's
 snapshot, compiled rules, and metadata in one transaction. The worker publishes
 the new matcher after the transaction succeeds. A failed source retains its
 last-known-good rules and does not prevent the other source from updating.
+Refreshes for the same source are serialized, including metadata-only results;
+every entry point waits for initialization. Downloads have a 20-second deadline
+covering response headers and body reads.
 
 A content script asks for the current document's selectors. If the hostname is
 enabled, the script injects CSS, classifies resource hostnames, and observes DOM
 changes. An identified resource can hide itself and an explicitly marked ad
 slot. It cannot collapse an arbitrary ancestor.
+Resource markers are reversible: changed, moved, or removed resources release
+their old slot when no blocked resource remains. Responsive images and media
+use the browser's selected URL, and delayed classifications are discarded when
+the element changes. Cosmetic stylesheet rules remain separate from these markers.
 
-The popup reads site status from frame zero without requesting source metadata.
+The popup reads applied site status from frame zero and compares it with the
+saved host policy, so reopening after a failed reload does not lose the pending change.
+Source metadata is requested only when the user opens Updates.
 It shows the site switch and keeps manual updates in a collapsed disclosure.
 It stores an exact-host preference, reloads the tab, and closes. A failed save
 restores the previous switch state. If the save succeeds but reload fails, the
-popup retains the saved state and asks the user to reload. Source refreshes and preference changes take effect
+popup retains the saved state and offers a Reload page button. New rules installed
+by a manual refresh also offer reload on an enabled page. Update failures remain
+inside Updates, with saved-rule reassurance when verified and a Try again button.
+Source refreshes and preference changes take effect
 in documents on navigation. There is no live reconfiguration protocol.
 The worker serializes preference writes because each update reads and replaces
 the same stored record. Concurrent toggles must retain both hostname changes.
@@ -110,12 +122,18 @@ before opening Chromium, so that task cannot silently test a stale bundle.
 Compile-time contract fixtures reject missing request payloads and inconsistent
 refresh results. `mise run install:browser` installs Chromium through the locked
 Playwright package when a system browser is unavailable.
+Browser tests prefer installed Chrome (or `CHROME_EXECUTABLE`) in disposable
+profiles, loading the package through its extension debugging API. The locked
+Playwright browser remains a fallback for environments without Chrome.
 
 The browser suite uses isolated profiles and local fixtures. It covers cosmetic
 exceptions, resource and ancestor boundaries, frames, private-host exclusion,
 popup controls, worker restart, alarm persistence, and independent refresh
 failure. Concurrent site toggles must retain both saved preferences. The suite
 does not install the extension in your normal browser profile.
+The isolated scenarios in `scripts/robustness.test.mjs` additionally exercise
+resource reuse, selected media, conditional exceptions, concurrent refreshes,
+and retry delivery while caches initialize, against packaged runtime code.
 
 To inspect popup appearance, set `CLEARSPACE_POPUP_SCREENSHOT` to a path under
 `artifacts/` when running `mise run test:browser`. The capture uses a device scale
