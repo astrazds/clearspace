@@ -161,7 +161,7 @@ mise run check
 `mise run check` checks runtime JavaScript contracts, runs unit tests, rebuilds
 the unpacked extension, and runs the complete Chromium browser suite. This gate
 does not test Safari. The browser test
-uses a system Chromium when available or Playwright's installed Chromium
+uses installed Google Chrome when available, or Playwright's installed Chromium
 (`mise run install:browser`). `mise run test:browser` also
 rebuilds before testing. Edit source files instead of generated files in `dist/`.
 
