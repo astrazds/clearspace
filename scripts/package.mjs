@@ -2,8 +2,10 @@ import { cp, mkdir, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import { readVersions } from './version-files.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+await readVersions(repoRoot);
 const manifest = JSON.parse(await readFile(path.join(repoRoot, 'manifest.json'), 'utf8'));
 const releaseName = `clearspace-${manifest.version}`;
 const releaseDir = path.join(repoRoot, 'dist', 'unpacked', releaseName);
