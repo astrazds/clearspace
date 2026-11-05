@@ -14,6 +14,12 @@
       "mergeCommit": "a3f25d5ce43bbbba77e917130f884566c8ea332a",
       "kind": "none",
       "version": "0.2.0"
+    },
+    {
+      "pr": 11,
+      "mergeCommit": "1a4afe95ac09d8c386b0a5c7fa47b562c502580d",
+      "kind": "none",
+      "version": "0.2.0"
     }
   ]
 }
