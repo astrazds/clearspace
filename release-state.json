@@ -20,6 +20,12 @@
       "mergeCommit": "1a4afe95ac09d8c386b0a5c7fa47b562c502580d",
       "kind": "none",
       "version": "0.2.0"
+    },
+    {
+      "pr": 12,
+      "mergeCommit": "a66e7be047a9e4949269c1e66eb8af094a9e3115",
+      "kind": "none",
+      "version": "0.2.0"
     }
   ]
 }
